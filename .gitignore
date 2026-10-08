@@ -1,0 +1,22 @@
+# Node / TypeScript
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env
+.env
+.env.local
+.envrc
+
+# Coverage / test artifacts
+coverage/
+.nyc_output/
