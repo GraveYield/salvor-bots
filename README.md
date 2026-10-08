@@ -10,7 +10,128 @@
 > (GraveScanner + GraveVault, Anchor 0.32.1 / Solana 3.0.10). This SDK
 > drives those programs without an IDL or `anchor build` dependency.
 
-## What this is
+## Overview
+
+Salvor Bots are the autonomous execution layer of the GraveYield ecosystem.
+
+GraveYield is designed to create a deterministic lifecycle for abandoned liquidity:
+
+Pool Discovery
+→ Eligibility Evaluation
+→ Confirmation
+→ Certification
+→ Salvage
+→ Settlement
+→ LP Claims
+
+Salvor Bots operate on the execution side of this lifecycle. They identify eligible opportunities, evaluate their economic and technical conditions, and submit salvage operations when the required protocol conditions are satisfied.
+
+## Architecture
+
+The Salvor system is intended to support multiple autonomous strategies while maintaining the same GraveYield protocol rules.
+
+Potential Salvor roles include:
+
+- **Conservative** — prioritizes high-confidence, low-risk opportunities.
+- **Experimental** — explores opportunities with higher execution or market risk.
+- **Monitor** — observes candidates and tracks their lifecycle without necessarily executing salvage.
+- **Specialist** — optimized for specific DEXs, pool types, or execution conditions.
+
+These strategies should compete on execution quality rather than bypassing GraveYield's eligibility rules.
+
+## Core Responsibilities
+
+A Salvor may perform:
+
+1. Pool discovery
+2. Candidate filtering
+3. GraveYield eligibility monitoring
+4. Economic evaluation
+5. Transaction preparation
+6. Salvage execution
+7. Result verification
+8. Settlement tracking
+
+The Salvor does **not** determine legal ownership or independently declare a pool abandoned.
+
+Eligibility is determined by the GraveYield protocol according to its deployed rules.
+
+## Design Principles
+
+### Protocol-first
+
+Salvor Bots are operators of the GraveYield protocol, not replacements for its on-chain security rules.
+
+### Non-custodial
+
+Salvor infrastructure should not require custody of user assets beyond the permissions necessary to execute an authorized salvage transaction.
+
+### Deterministic execution
+
+Bots should operate according to explicit strategies and measurable conditions rather than discretionary intervention.
+
+### Strategy isolation
+
+Different Salvor strategies should be independently configurable and should not weaken the protocol's eligibility or settlement guarantees.
+
+### Verifiable execution
+
+Bot decisions and execution results should be observable and reproducible wherever practical.
+
+## Current Status
+
+**Phase 8 — Salvor bots SDK shipped.** The GraveYield protocol itself
+is built on Solana (Raydium V4 first), and the salvor bot SDK that
+drives it is now live in this repo as the `@graveyield/sdk` package.
+Bot implementations (the actual autonomous strategies — Conservative,
+Experimental, Monitor, Specialist) are downstream consumers of this
+SDK and land in Phases 10–11 per the GraveYield shipping roadmap.
+
+## Planned Development
+
+- [x] Salvor agent architecture — the `GraveYieldClient` is the agent's
+  window into the protocol; the eight top-level operations
+  (`evaluatePool`, `recordLaunchPrice`, `phase1`, `phase2`,
+  `snapshotLpHolders`, `buildMerkleTree`, `certifyAndSalvage`,
+  `claimLpProceeds`) cover the full lifecycle from discovery through
+  settlement.
+- [x] GraveYield SDK integration — Phase 8 done; this repo IS the SDK.
+- [ ] Candidate discovery (Phase 9 — the GraveScanner v2 indexer; this
+  SDK's `deriveLastSwapV4` and `deriveLaunchPriceV4` are its seeds).
+- [x] Eligibility monitoring — `evaluatePool` walks all six derelict-
+  pool criteria (C1–C6) as a pure read; safe to poll.
+- [ ] Economic opportunity evaluation — the salvor bot's profit-margin
+  math; the SDK provides the Charter-aware `buildPriorityFeePolicy`
+  + `charterGuard` primitives.
+- [x] Transaction simulation — `simulateTransaction` +
+  `simulateAndDecode` decode GraveYield custom errors from the
+  simulated result.
+- [x] Salvage execution — `certifyAndSalvage` bundles phase-2 certify
+  + `salvage_pool` into one atomic transaction (beats the 1h cert TTL).
+- [ ] Settlement verification (Phase 9 indexer + Phase 11
+  observability).
+- [ ] Monitoring and observability (Phase 11).
+- [ ] Strategy-specific Salvors (Phase 10 — first Salvor; Phase 15
+  adds the Conservative/Experimental/Monitor/Specialist family).
+- [ ] Multi-DEX support (Phase 15 — Raydium CLMM, Orca, PumpSwap,
+  Meteora. v1.0 SDK is Raydium V4 only).
+- [ ] Multi-chain support (post-mainnet).
+
+## Relationship to GraveYield
+
+This repository is part of the GraveYield ecosystem.
+
+The core protocol is maintained separately:
+
+https://github.com/GraveYield/graveyield-protocol
+
+The protocol defines the rules and settlement mechanism.
+
+Salvor Bots provide autonomous infrastructure for operating within those rules.
+
+---
+
+# `@graveyield/sdk` — technical reference
 
 TypeScript salvor SDK for GraveYield Protocol — turns the on-chain
 GraveScanner + GraveVault programs into operations a salvor bot can call
@@ -101,10 +222,10 @@ but the SDK does NOT depend on `anchor build` or any IDL JSON.
 ```bash
 # Unit tests (offline — Merkle vectors, borsh round-trips, discriminators,
 # priority-fee edges, Charter guard, attestation wire format, PDA seeds).
-pnpm -r test
+pnpm test
 
 # Live devnet smoke (read-only) — sets DEVNET_RPC_URL.
-DEVNET_RPC_URL=https://api.devnet.solana.com pnpm -r test
+DEVNET_RPC_URL=https://api.devnet.solana.com pnpm test
 ```
 
 The test suite uses `node:test` (zero new heavy deps) plus `tsx` for
@@ -149,10 +270,18 @@ The SDK surfaces the UNCX Raydium V4 marker check as a flag
 (`SnapshotResult.uncxMarkerPresent`). The on-chain adapter is the
 authoritative check (LOCKER-001); the SDK's off-chain cross-check for
 non-UNCX lockers (PinkSale / Team.Finance / Streamflow) is a Phase 9
-indexer concern and is NOT implemented in v0.1. Operators must resolve
+indexer concern and is NOT implemented in v0.2. Operators must resolve
 the locker evidence out-of-band before certification until the Phase 9
 indexer produces it.
 
+## Disclaimer
+
+Salvor Bots are experimental software.
+
+Running a Salvor may result in transaction fees, failed transactions, market losses, or loss of assets. Operators are responsible for configuring and securing their own infrastructure and wallets.
+
+Nothing in this repository constitutes financial, legal, or investment advice.
+
 ## License
 
-Apache-2.0, same as the rest of the GraveYield monorepo.
+Apache-2.0, same as the rest of the GraveYield ecosystem.
