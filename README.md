@@ -26,18 +26,38 @@ Pool Discovery
 
 Salvor Bots operate on the execution side of this lifecycle. They identify eligible opportunities, evaluate their economic and technical conditions, and submit salvage operations when the required protocol conditions are satisfied.
 
-## Architecture
+## Architecture — the five-bot Salvor Fleet (Phase 11)
 
-The Salvor system is intended to support multiple autonomous strategies while maintaining the same GraveYield protocol rules.
+The fleet is five roles sharing ONE execution foundation. Strategies
+compete on execution quality; none can bypass GraveYield's eligibility
+rules, the Charter fee guard, simulation, or settlement verification —
+those live in the shared engine (`fleet-core`) and are not
+strategy-configurable.
 
-Potential Salvor roles include:
+- **Scout** (`@graveyield/scout`) — discovery, candidate filtering,
+  Phase-1 evaluation requests, anchor/cert lifecycle monitoring,
+  opportunity publication. Never salvages.
+- **Conservative** (`@graveyield/conservative`) — the reference
+  executor: stronger economics, tighter slippage, conservative fee
+  share, dry-run by default.
+- **Sniper** (`@graveyield/sniper`) — the latency-sensitive executor:
+  urgency-ordered batches (soonest cert expiry first), tighter time
+  windows, higher fee share — same safety gates as everyone else.
+- **Experimental** (`@graveyield/experimental`) — the isolated strategy
+  sandbox: hard risk caps (fee budget, LP-position fraction), full
+  event attribution, zero influence on the other bots.
+- **Monitor/Risk** (`@graveyield/monitor`) — observes the whole fleet,
+  verifies confirmed salvages against the on-chain SalvageReceipt
+  (40/40/20), detects anomalies. Read-only by construction: no keys,
+  no builder, no submission path.
 
-- **Conservative** — prioritizes high-confidence, low-risk opportunities.
-- **Experimental** — explores opportunities with higher execution or market risk.
-- **Monitor** — observes candidates and tracks their lifecycle without necessarily executing salvage.
-- **Specialist** — optimized for specific DEXs, pool types, or execution conditions.
-
-These strategies should compete on execution quality rather than bypassing GraveYield's eligibility rules.
+The shared foundation (`@graveyield/fleet-core`) provides the versioned
+opportunity envelope, the executor lifecycle state machine, idempotent
+delivery admission + lease coordination (single-process topology in v1),
+the integer economic estimator, the D3 fee plan, the route-adapter
+seam, live on-chain revalidation, the fork-proven Raydium V4 CPI
+account derivation, and the common prepare → simulate → submit →
+confirm pipeline with the Charter guard on every transaction.
 
 ## Core Responsibilities
 
@@ -80,17 +100,29 @@ Bot decisions and execution results should be observable and reproducible wherev
 
 ## Current Status
 
-**Phase 10 — Scout Salvor shipped.** The GraveYield protocol itself
-is built on Solana (Raydium V4 first), the salvor bot SDK that drives
-it is live in this repo as the `@graveyield/sdk` package, and the
-first actual bot — the **Scout Salvor** (`@graveyield/scout`, see
-[`scout/README.md`](./scout/README.md)) — now lives here as a
-workspace package. The Scout discovers candidates, requests on-chain
-eligibility evaluation, monitors anchors/certificates, and reports
-opportunities to the downstream execution bots. It never salvages.
-The remaining bots (Sniper, Conservative, Experimental, Monitor/Risk)
-are downstream consumers and land in Phases 10b–15 per the GraveYield
-shipping roadmap.
+**Phase 11 — the Salvor Fleet shipped.** All five roles are implemented
+as workspace packages over the shared `@graveyield/fleet-core` engine:
+the **Scout** (`@graveyield/scout` — discovery + monitoring, never
+salvages), the three executors (**Conservative**, **Sniper**,
+**Experimental** — dry-run by default; live mode requires explicit
+operator enablement plus a signer), and **Monitor/Risk**
+(`@graveyield/monitor` — read-only observation, settlement
+reconciliation, anomaly detection). The on-chain GraveScanner +
+GraveVault programs (devnet) are driven by the `@graveyield/sdk`
+package.
+
+Offline gates: **307 tests, 0 failures, 0 skipped** across all seven
+packages, plus clean `pnpm -r typecheck` and `pnpm -r build`.
+
+Operational notes: executors default to dry-run and cannot submit in
+that mode (the code path throws); live execution additionally requires
+a signer and explicit `liveEnablement`. Cross-process coordination is
+NOT shipped in v1 — the in-memory store coordinates one process per
+bot, and at most one executor should be enabled per opportunity
+identity. Live routing requires an operator-provided Jupiter v6
+quote/swap endpoint; devnet attestation-signed submissions remain
+unverifiable until the owner re-points the devnet oracles (read-only
+devnet smoke tests do not prove live submission).
 
 ## Planned Development
 
@@ -111,19 +143,23 @@ shipping roadmap.
   Phase 1 evaluation with oracle-signed C1 attestations, monitors the
   ≥2-epoch confirmation, and reports `certification-ready` /
   `salvageable` opportunities.
-- [ ] Economic opportunity evaluation — the executor bots' profit-margin
-  math; the SDK provides the Charter-aware `buildPriorityFeePolicy`
-  + `charterGuard` primitives.
+- [x] Economic opportunity evaluation — the fleet-core integer
+  estimator (proportional withdraw → route conversion → D6 dust skip →
+  live-share split → costs → break-even) plus the D3-exact
+  `derivePriorityFeePlan` and the Charter-aware `charterGuard`.
 - [x] Transaction simulation — `simulateTransaction` +
   `simulateAndDecode` decode GraveYield custom errors from the
   simulated result.
 - [x] Salvage execution — `certifyAndSalvage` bundles phase-2 certify
   + `salvage_pool` into one atomic transaction (beats the 1h cert TTL).
-- [ ] Executor bots (Sniper / Conservative / Experimental) consuming
-  the Scout's opportunity feed under a shared execution policy.
-- [ ] Monitor / Risk bot + settlement verification (Phase 11
-  observability).
-- [ ] Strategy-specific Salvors (Phase 15).
+- [x] Executor bots (Conservative → Sniper → Experimental) consuming
+  the Scout's opportunity envelopes over the shared `fleet-core`
+  execution policy, in the mandate's dependency order.
+- [x] Monitor / Risk bot + settlement verification (receipt
+  reconciliation against the 40/40/20 split, anomaly diagnostics).
+- [ ] Strategy-specific Salvors (Phase 15 — the five-bot fleet is the
+  initial set; the Specialist role was explicitly descoped by the
+  fleet mandate).
 - [ ] Multi-DEX support (Phase 15 — Raydium CLMM, Orca, PumpSwap,
   Meteora. v1.0 is Raydium V4 only).
 - [ ] Multi-chain support (post-mainnet).

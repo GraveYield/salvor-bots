@@ -5,6 +5,91 @@ The GraveYield protocol (on-chain programs + monorepo tooling) lives at
 [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
 and has its own changelog.
 
+## [Unreleased — Phase 11 — the Salvor Fleet]
+
+### Added — the shared execution foundation (`@graveyield/fleet-core` v0.1.0)
+
+The ONE execution substrate every executor bot runs on. Built from the
+owner's fleet mandate: versioned opportunity envelopes and identity keys
+(`cluster|amm|pool`), a 15-state executor lifecycle with enforced
+transitions, idempotent delivery admission + lease coordination
+(`FleetStore`; the shipped in-memory backend coordinates ONE PROCESS
+ONLY — multi-process deployments must provide a shared backend), the
+fleet event taxonomy with failure classification and replayable sinks,
+the integer economic estimator (proportional withdraw → route
+conversion → D6 dust skip → live-share split → costs → break-even; no
+floats ever), the D3 fee plan (`derivePriorityFeePlan` fixes the Phase 8
+unit mismatch — total fee budget = margin × profit, per-CU price =
+budget / cuLimit capped at the Charter ceiling), the `RouteAdapter` seam
+(Jupiter v6 HTTP adapter + fakes; quotes are untrusted until validated),
+live on-chain revalidation (kind re-derivation, cert-TTL margins,
+anchor-epoch binding), fork-proven Raydium V4 CPI account derivation
+(AmmInfo 496/528/560/592 + Serum 53/85/117/165/253/285/317 from
+`fetch_v4_fork_fixtures.mjs`), and the common
+prepare → simulate → submit → confirm pipeline with the Charter guard
+at assembly AND submit, dynamically pinned attestation indices inside
+the atomic certify+salvage bundle, snapshot→live-supply re-pinning, and
+a hard dry-run gate (`submit()` throws unless mode = live with explicit
+operator enablement).
+
+### Added — Monitor/Risk (`@graveyield/monitor` v0.1.0)
+
+The fleet observer and verification layer. Consumes Scout + executor
+events (replay-safe), tracks opportunity age / cert expiry / attempts /
+signatures, verifies confirmed salvage transactions against the
+GraveVault SalvageReceipt (sum + 40/40/20 shares + reported-vs-chain
+mismatch), detects stale opportunities, repeated attempts, conflicting
+claims, and unverified confirmations, and emits machine-readable
+diagnostics. Has NO keypair, NO builder, NO submission path — read-only
+by construction.
+
+### Added — Conservative (`@graveyield/conservative` v0.1.0)
+
+The reference executor: stronger economics (default min net profit
+0.05 SOL), execution headroom (150 bps slippage override — tighter than
+the 300 bps protocol default), conservative fee share (15% of expected
+profit), three submission attempts. Dry-run by default; live requires
+explicit enablement + signer.
+
+### Added — Sniper (`@graveyield/sniper` v0.1.0)
+
+The latency-sensitive executor: urgency-ordered batches (soonest cert
+expiry first), 5 s quote-freshness window, 30% fee share — all through
+the SAME shared gates as every other executor (no safety bypass).
+
+### Added — Experimental (`@graveyield/experimental` v0.1.0)
+
+The isolated strategy sandbox: hard risk caps (per-attempt priority-fee
+budget, max LP-position fraction of live supply) enforced by a
+fail-closed guard BEFORE simulation, full event attribution
+(`experimentId` + `riskCaps` on every strategy event), and its own
+defaults object — zero influence on Conservative/Sniper behavior.
+
+### Fixed — SDK defects found by the fleet audit (FLEET-M0)
+
+- `priorityFee.ts`: `derivePriorityFeePlan` added (D3-exact fee math);
+  `computeOperationalMaxLamportsPerCu` deprecated with a hazard note —
+  it returned margin × TOTAL profit as a per-CU price, permitting
+  over-budget fees at large compute limits (and starving them at small
+  ones).
+- `client.ts` `evaluatePool` C2: the current-price comparison used mint
+  base58 string ordering to pick the base reserve, inverting the price
+  for pools whose coin-side mint sorts after the pc-side mint. The
+  on-chain adapter maps base=coin/quote=pc unconditionally; the SDK now
+  mirrors that exactly.
+- `snapshot.ts`: holder keys are now sorted by pubkey BYTES (the Rust
+  `BTreeMap<Pubkey>` order the Merkle tree enforces) instead of base58
+  string order — the two diverge for a few percent of key pairs and
+  made snapshots intermittently fail the tree's canonical-order check.
+
+### Test counts (offline, node:test)
+
+Root SDK 116 · fleet-core 64 · Scout 77 · Conservative 13 · Sniper 7 ·
+Experimental 9 · Monitor 21 (incl. 8 whole-fleet integration scenarios:
+duplicates, replay, lease races, stale certs, failed simulations,
+restarts, live settlement reconciliation) = **307 tests, 0 failures,
+0 skipped**, plus `pnpm -r typecheck`/`build` clean.
+
 ## [Unreleased — Phase 10]
 
 ### Added — the Scout Salvor (`@graveyield/scout` v0.1.0)

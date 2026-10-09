@@ -1,0 +1,33 @@
+{
+  "name": "@graveyield/fleet-core",
+  "version": "0.1.0",
+  "description": "GraveYield Salvor Fleet — shared execution foundation for the executor bots (Conservative, Sniper, Experimental): versioned opportunity envelopes, lifecycle contracts, idempotent event consumption, lease coordination, on-chain revalidation, the integer economic estimator, the D3 fee plan, the route adapter interface, and the common prepare → simulate → submit → confirm pipeline with the Charter guard on every transaction.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "pnpm -w run build && tsc -p tsconfig.json",
+    "typecheck": "pnpm -w run build && tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist",
+    "test": "node --test --import tsx/esm --test-reporter=spec --test-name-pattern='.*' 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@graveyield/sdk": "workspace:*",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.6",
+    "bn.js": "^5.2.1",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.5",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

@@ -1,5 +1,8 @@
 packages:
   - scout
-# The SDK is the workspace root package — include it in recursive runs
-# (`pnpm -r typecheck|build|test`) so the gate always covers both.
+  - fleet-core
+  - monitor
+  - conservative
+  - sniper
+  - experimental
 includeWorkspaceRoot: true
