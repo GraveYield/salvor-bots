@@ -80,12 +80,17 @@ Bot decisions and execution results should be observable and reproducible wherev
 
 ## Current Status
 
-**Phase 8 — Salvor bots SDK shipped.** The GraveYield protocol itself
-is built on Solana (Raydium V4 first), and the salvor bot SDK that
-drives it is now live in this repo as the `@graveyield/sdk` package.
-Bot implementations (the actual autonomous strategies — Conservative,
-Experimental, Monitor, Specialist) are downstream consumers of this
-SDK and land in Phases 10–11 per the GraveYield shipping roadmap.
+**Phase 10 — Scout Salvor shipped.** The GraveYield protocol itself
+is built on Solana (Raydium V4 first), the salvor bot SDK that drives
+it is live in this repo as the `@graveyield/sdk` package, and the
+first actual bot — the **Scout Salvor** (`@graveyield/scout`, see
+[`scout/README.md`](./scout/README.md)) — now lives here as a
+workspace package. The Scout discovers candidates, requests on-chain
+eligibility evaluation, monitors anchors/certificates, and reports
+opportunities to the downstream execution bots. It never salvages.
+The remaining bots (Sniper, Conservative, Experimental, Monitor/Risk)
+are downstream consumers and land in Phases 10b–15 per the GraveYield
+shipping roadmap.
 
 ## Planned Development
 
@@ -96,11 +101,17 @@ SDK and land in Phases 10–11 per the GraveYield shipping roadmap.
   `claimLpProceeds`) cover the full lifecycle from discovery through
   settlement.
 - [x] GraveYield SDK integration — Phase 8 done; this repo IS the SDK.
-- [ ] Candidate discovery (Phase 9 — the GraveScanner v2 indexer; this
-  SDK's `deriveLastSwapV4` and `deriveLaunchPriceV4` are its seeds).
+- [x] Candidate discovery (Phase 9 shipped the GraveScanner v2 indexer
+  in the monorepo; Phase 10's Scout carries the same proven pipeline
+  into the first bot).
 - [x] Eligibility monitoring — `evaluatePool` walks all six derelict-
-  pool criteria (C1–C6) as a pure read; safe to poll.
-- [ ] Economic opportunity evaluation — the salvor bot's profit-margin
+  pool criteria (C1–C6) as a pure read; safe to poll. The Scout adds
+  on-chain anchor/cert lifecycle monitoring.
+- [x] First Salvor bot (Phase 10 — the Scout). Requests GraveScanner
+  Phase 1 evaluation with oracle-signed C1 attestations, monitors the
+  ≥2-epoch confirmation, and reports `certification-ready` /
+  `salvageable` opportunities.
+- [ ] Economic opportunity evaluation — the executor bots' profit-margin
   math; the SDK provides the Charter-aware `buildPriorityFeePolicy`
   + `charterGuard` primitives.
 - [x] Transaction simulation — `simulateTransaction` +
@@ -108,13 +119,13 @@ SDK and land in Phases 10–11 per the GraveYield shipping roadmap.
   simulated result.
 - [x] Salvage execution — `certifyAndSalvage` bundles phase-2 certify
   + `salvage_pool` into one atomic transaction (beats the 1h cert TTL).
-- [ ] Settlement verification (Phase 9 indexer + Phase 11
+- [ ] Executor bots (Sniper / Conservative / Experimental) consuming
+  the Scout's opportunity feed under a shared execution policy.
+- [ ] Monitor / Risk bot + settlement verification (Phase 11
   observability).
-- [ ] Monitoring and observability (Phase 11).
-- [ ] Strategy-specific Salvors (Phase 10 — first Salvor; Phase 15
-  adds the Conservative/Experimental/Monitor/Specialist family).
+- [ ] Strategy-specific Salvors (Phase 15).
 - [ ] Multi-DEX support (Phase 15 — Raydium CLMM, Orca, PumpSwap,
-  Meteora. v1.0 SDK is Raydium V4 only).
+  Meteora. v1.0 is Raydium V4 only).
 - [ ] Multi-chain support (post-mainnet).
 
 ## Relationship to GraveYield

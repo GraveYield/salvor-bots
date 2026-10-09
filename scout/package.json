@@ -1,0 +1,35 @@
+{
+  "name": "@graveyield/scout",
+  "version": "0.1.0",
+  "description": "GraveYield Scout Salvor — Phase 10 discovery bot: enumerates Raydium V4 pools, pre-filters the six derelict-pool criteria, double-checks candidates with the GraveYield SDK, requests on-chain GraveScanner Phase 1 evaluation, monitors eligibility anchors/certificates, and reports opportunities to the downstream execution bots. Discovery and monitoring only — the Scout never salvages.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "graveyield-scout": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "pnpm -w run build && tsc -p tsconfig.json",
+    "typecheck": "pnpm -w run build && tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js",
+    "clean": "rm -rf dist",
+    "test": "node --test --import tsx/esm --test-reporter=spec --test-name-pattern='.*' 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@graveyield/sdk": "workspace:*",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.6",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
