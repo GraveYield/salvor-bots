@@ -1,4 +1,5 @@
 packages:
+  - fleet-ops
   - scout
   - fleet-core
   - monitor

@@ -4,7 +4,8 @@
 > **Package:** `@graveyield/sdk` (npm name kept for back-compat with the
 > GraveYield monorepo references; the repo is the canonical home from
 > Phase 8 onward).
-> **Status:** Phase 8 — Salvor bots SDK (shipped, all gates green).
+> **Status:** Phase 11 (ops) — the five-bot fleet + the fleet service
+> runner (health/alerting/trails). SDK publish-ready (see `PUBLISH.md`).
 > **Companion:** the on-chain programs live at
 > [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
 > (GraveScanner + GraveVault, Anchor 0.32.1 / Solana 3.0.10). This SDK
@@ -58,6 +59,29 @@ the integer economic estimator, the D3 fee plan, the route-adapter
 seam, live on-chain revalidation, the fork-proven Raydium V4 CPI
 account derivation, and the common prepare → simulate → submit →
 confirm pipeline with the Charter guard on every transaction.
+
+## Running the fleet — `@graveyield/fleet-ops`
+
+The fleet ships as a **service**, not just libraries. One supervised
+process runs the Scout (discovery → evaluation → submission →
+monitoring cycles) and the Monitor (diagnostic sweeps) with health
+heartbeats, coded alerts with dedup windows, and JSONL event trails.
+The Scout's events bridge into the Monitor in-process — the read-only
+observer sees exactly what the Scout emits, with no second feed to
+drift. Dry-run remains the default; the runner never touches the
+Scout's submission gate.
+
+```bash
+pnpm --filter @graveyield/fleet-ops build
+FLEET_STATE_DIR=./fleet-state pnpm --filter @graveyield/fleet-ops start   # run forever
+```
+
+Protocol-side Phase 11 services (indexer service, GraveVault
+receipt/claim/failed-tx observer, Merkle snapshot service, the
+read-only vault-audit scenarios) live in the
+[graveyield-protocol](https://github.com/GraveYield/graveyield-protocol)
+repo under `ops/` — runbook: `docs/OPS.md` there. The SDK is
+publish-ready: see [`PUBLISH.md`](PUBLISH.md).
 
 ## Core Responsibilities
 

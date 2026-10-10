@@ -5,6 +5,56 @@ The GraveYield protocol (on-chain programs + monorepo tooling) lives at
 [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
 and has its own changelog.
 
+## [Unreleased — Phase 11 (ops): the fleet as a running service — health, alerting, JSONL trails, publish-ready SDK]
+
+> Naming note: the five-bot fleet shipped earlier under the working
+> title "Phase 11" (the entry below). In the canonical shipping roadmap,
+> Phase 11 is the **devnet launch**; this entry closes the fleet's rows
+> of that scope — "first Salvor running" + the fleet's slice of
+> observability. The protocol-side rows (indexer service, vault
+> observer, Merkle service, SDK publication, the read-only scenarios)
+> ship in the graveyield-protocol repo under `ops/` at the same time.
+
+### Added
+
+- **`@graveyield/fleet-ops` v0.1.0 — the fleet service runner
+  (`fleet-ops/`).** One supervised process running the Scout and the
+  Monitor with full observability:
+  - **Scout cycles** (`runScoutCycle`) — heartbeats, per-stage counters
+    (discovered / candidates / evaluated / launch prices / phase-1
+    submitted / failed), degraded on phase-1 failures, critical
+    `scout-cycle-failed` alert when a cycle throws.
+  - **Monitor sweeps** (`runMonitorSweep`) — every fleet Monitor
+    diagnostic mapped to a coded alert with the diagnostic's severity
+    (`conflicting-claims` / `failed-simulation` / `receipt-mismatch` →
+    critical; stale/expired/repeat/unverified → warn; verified/reconciled
+    → counted only). Bigint detail fields are stringified into alert
+    context.
+  - **The Scout→Monitor bridge** — the Scout's event sink fanouts into
+    `Monitor.observeScoutEvent` in-process: the fleet's read-only
+    observer sees exactly what the Scout emits, with no second feed to
+    drift. Executor bots join via the same bridge when an operator
+    enables them.
+  - **Health + alerts** — the same pattern as the protocol-side ops
+    package: derived staleness (silent past 3× poll ⇒ `stale`),
+    monotonic counters, deterministic JSON snapshots; coded alerts with
+    dedup windows over console / JSONL / webhook sinks. Deliberately
+    standalone copies (the repos share only the SDK).
+  - **CLI** (`graveyield-fleet`) — `run` (forever, SIGINT/SIGTERM
+    graceful), `cycle`, `sweep`, `health`. The runner never touches the
+    Scout's dry-run gate: submission still requires the operator's
+    explicit environment.
+  - **27 offline tests.**
+
+- **`sdk/PUBLISH.md` — the npm publication checklist** (mirrors the
+  protocol repo's; the packed tarball passed `npm publish --dry-run`).
+
+### Changed
+
+- **`pnpm-workspace.yaml`** — `fleet-ops` added as the seventh package.
+- **Root `README.md`** — architecture section gains the fleet runner;
+  status line moves to Phase 11 (ops).
+
 ## [Unreleased — Phase 11 — the Salvor Fleet]
 
 ### Added — the shared execution foundation (`@graveyield/fleet-core` v0.1.0)

@@ -20,3 +20,6 @@ build/
 # Coverage / test artifacts
 coverage/
 .nyc_output/
+
+# fleet-ops service state
+fleet-state/

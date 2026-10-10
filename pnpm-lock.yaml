@@ -142,6 +142,40 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  fleet-ops:
+    dependencies:
+      '@graveyield/fleet-core':
+        specifier: workspace:*
+        version: link:../fleet-core
+      '@graveyield/monitor':
+        specifier: workspace:*
+        version: link:../monitor
+      '@graveyield/scout':
+        specifier: workspace:*
+        version: link:../scout
+      '@graveyield/sdk':
+        specifier: workspace:*
+        version: link:..
+      '@solana/web3.js':
+        specifier: ^1.95.0
+        version: 1.99.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      bn.js:
+        specifier: ^5.2.1
+        version: 5.2.5
+    devDependencies:
+      '@types/bn.js':
+        specifier: ^5.1.0
+        version: 5.2.0
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.1
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.15
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   monitor:
     dependencies:
       '@graveyield/fleet-core':
