@@ -5,6 +5,37 @@ The GraveYield protocol (on-chain programs + monorepo tooling) lives at
 [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
 and has its own changelog.
 
+## [Unreleased — Phase 12 (security + economic testnet): the fleet under attack — admission-gate matrix, competing-Salvor coordination, extreme-value economics, mid-flight state manipulation]
+
+> Roadmap Phase 12, verbatim goal: "Prove that GraveYield refuses to
+> act when its assumptions aren't satisfied." The fleet-side battery
+> complements the protocol repo's battery (catalogue:
+> `graveyield-protocol/docs/ADVERSARY.md`).
+
+### Added
+
+- **`fleet-core/test/adversary.test.ts` — 10 attack tests.** The
+  estimator under extreme-value attacks (u64::MAX reserves/supplies
+  stay exact and finite; inconsistent quotes refused at the exact
+  reserve boundary; sub-dust conversion contributes zero and is
+  flagged — partial-failure economics pinned; slippage overrides can
+  only tighten; zero-share configs refused). Competing Salvors at the
+  coordination layer: live leases are exclusive, replayed envelopes
+  are refused per bot, and an EXPIRED lease takeover is pinned as
+  finding F5 (no fencing token; the chain's init-once PDAs are the
+  backstop). Mid-flight state manipulation: an anchor invalidated
+  between checks flips a live opportunity to `stale-anchor`, and the
+  cert-TTL margin boundary is exact (61 s refused `cert-expired`,
+  120 s actionable).
+- **`scout/test/adversary.test.ts` — 10 attack tests.** The admission
+  gate matrix: C1/C3/C4/C5 are hard refusals; C2 without a recorded
+  baseline is soft (record launch price first) but C2 WITH a recorded
+  baseline is hard (a live price cannot be un-collapsed); a pool with
+  no attestable last swap is refused even with perfect criteria
+  (ORACLE-002 anti-fabrication); existing on-chain state flips the
+  verdict to monitor-only and a hard failure dominates it; unknown
+  future criteria names are ignored (the chain stays the authority).
+
 ## [Unreleased — Phase 11 (ops): the fleet as a running service — health, alerting, JSONL trails, publish-ready SDK]
 
 > Naming note: the five-bot fleet shipped earlier under the working
