@@ -200,6 +200,29 @@ The protocol defines the rules and settlement mechanism.
 
 Salvor Bots provide autonomous infrastructure for operating within those rules.
 
+### SDK sync policy — `src/` is a vendored mirror (NS-4)
+
+The TypeScript modules in `src/` are a **byte-identical vendored mirror**
+of `graveyield-protocol/sdk/src/`. The protocol repo is the single
+source of truth — do NOT edit `src/` here directly:
+
+1. Change `sdk/src/` in graveyield-protocol first.
+2. Copy the changed files into `salvor-bots/src/` within the same
+   change set and run both repos' test suites before pushing either
+   side.
+3. CI enforces byte-equality: the `sdk-sync-check` job in
+   graveyield-protocol's `.github/workflows/ci.yml` diffs `sdk/src/`
+   against `salvor-bots@main` on every protocol push/PR and on a weekly
+   schedule; ANY divergence fails CI there.
+
+History: the copies drifted silently (FLEET-M0 audit F1 — priority-fee
+unit mismatch, F5 — launch-price inversion, F7 — base58-string vs
+byte-order snapshot sorting); the fixes lived only in this repo while
+the protocol copy's tests pinned the buggy behavior. They were
+backported to the protocol SDK on 2026-10-24 (Phase 0 baseline, next
+step NS-4), and the drift gate now prevents a recurrence. Note this
+repo has no CI of its own yet — that is baseline next step NS-6.
+
 ---
 
 # `@graveyield/sdk` — technical reference
