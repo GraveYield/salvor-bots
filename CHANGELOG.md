@@ -36,6 +36,49 @@ and has its own changelog.
   verdict to monitor-only and a hard failure dominates it; unknown
   future criteria names are ignored (the chain stays the authority).
 
+### Security
+
+- **Dependency triage: 10 Dependabot advisories → 9 patched, 1
+  accepted-risk (2026-10-24).** All ten were transitive — no workspace
+  package imports any affected module directly. Rooted with three
+  `pnpm.overrides` in the root `package.json`; verified by `pnpm audit`
+  (10 → 1), runtime resolution checks, and the full 354-test battery
+  (238 workspace + 116 root SDK suite) including the live devnet smoke
+  round-trips, which exercise the patched `uuid`/`stream-json` path
+  through real JSON-RPC calls:
+  - **`toml` 3.0.0 → 5.0.1** (5 advisories: GHSA-82x6-q7mm-w9cf,
+    GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64,
+    GHSA-9qmh-m7c6-f92p — recursion, prototype pollution, quadratic
+    DoS ×3). Chain: `@coral-xyz/anchor` → toml (Anchor.toml/workspace
+    parsing, `workspace.js`). Override `>=5.0.1`; anchor's
+    `toml.parse` call verified against 5.0.1.
+  - **`uuid` 8.3.2 → 14.0.2** (GHSA-w5hq-g745-h8pq — missing buffer
+    bounds check in v3/v5/v6). Chain: `@solana/web3.js` → jayson →
+    uuid (JSON-RPC request IDs — runtime-reachable on every RPC
+    call). Override `>=11.1.1`; jayson uses only
+    `require('uuid').v4`, verified working on 14.
+  - **`stream-json` 1.9.1 → 3.7.0** (3 advisories: GHSA-528h-pc64-c93x,
+    GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc — quadratic filters,
+    JSONC re-scan, prototype pollution in Assembler). Chain:
+    `@solana/web3.js` → jayson → stream-json (streaming transports).
+    Override `>=3.6.0`; jayson consumes `StreamValues` + `Verifier`,
+    and the eager `web3.js → jayson → utils.js` load path plus live
+    RPC smoke calls pass on 3.7.0.
+  - **`bigint-buffer` 1.1.5 — ACCEPTED RISK, no upstream fix exists**
+    (GHSA-3gc7-fjrx-p6mg / CVE-2025-3194, CVSS 7.7: buffer overflow in
+    `toBigIntLE()`, availability impact only — crash, no
+    confidentiality/integrity impact). Chain: `@solana/spl-token` →
+    `@solana/buffer-layout-utils@0.3.0` → bigint-buffer. Upstream has
+    published no patched version (latest = 1.1.5, advisory active, no
+    workaround) and the vulnerable module is two levels below our
+    direct dependency boundary, so no override target exists. Risk
+    acceptance rationale: exploitation requires malformed length
+    metadata surviving `@solana/buffer-layout` span validation before
+    the conversion is reached; impact is a process crash (the fleet
+    supervisor restarts workers), not fund loss or data corruption.
+    Disposition: monitor `buffer-layout-utils`/`spl-token` for an
+    upstream fix; re-triage on any bump of either.
+
 ## [Unreleased — Phase 11 (ops): the fleet as a running service — health, alerting, JSONL trails, publish-ready SDK]
 
 > Naming note: the five-bot fleet shipped earlier under the working
