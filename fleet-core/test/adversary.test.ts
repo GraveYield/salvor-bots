@@ -7,9 +7,12 @@
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { PublicKey } from "@solana/web3.js";
 
-import { estimateSalvageEconomics, revalidateOpportunity, InMemoryFleetStore } from "../src/index.js";
+import {
+  estimateSalvageEconomics,
+  revalidateOpportunity,
+  InMemoryFleetStore,
+} from "../src/index.js";
 import { FIXED_NOW_MS, SCANNER_ID, encodeAnchor } from "./helpers.js";
 import { buildWorld } from "./world.js";
 import { RAYDIUM_V4_PROGRAM_ID, eligibilityAnchorPda } from "@graveyield/sdk";

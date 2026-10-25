@@ -7,9 +7,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { revalidateOpportunity } from "../src/index.js";
-import { FIXED_NOW_MS, SCANNER_ID, VAULT_ID, encodeCert, encodeAnchor } from "./helpers.js";
+import { FIXED_NOW_MS, SCANNER_ID, encodeCert, encodeAnchor } from "./helpers.js";
 import { buildWorld, type WorldOptions } from "./world.js";
-import { eligibilityCertPda, eligibilityAnchorPda, RAYDIUM_V4_PROGRAM_ID } from "@graveyield/sdk";
+import { eligibilityAnchorPda, RAYDIUM_V4_PROGRAM_ID } from "@graveyield/sdk";
 
 const NOW = () => FIXED_NOW_MS;
 
@@ -49,7 +49,10 @@ describe("revalidateOpportunity", () => {
     });
     assert.ok(out.ok);
     assert.equal(out.ok && out.opportunity.kind, "salvageable");
-    assert.equal(out.ok && out.opportunity.certExpiresAt, BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n);
+    assert.equal(
+      out.ok && out.opportunity.certExpiresAt,
+      BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n,
+    );
   });
 
   test("cert inside TTL but under the strategy margin is rejected cert-expired", async () => {
@@ -125,7 +128,12 @@ describe("revalidateOpportunity", () => {
     // Overwrite the cert with a WRONG anchor epoch.
     w.rpc.setAccount(
       w.certPda,
-      encodeCert({ ammProgramId: RAYDIUM_V4_PROGRAM_ID, poolAddress: w.poolAddress, anchorEpoch: 999n, expiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n }),
+      encodeCert({
+        ammProgramId: RAYDIUM_V4_PROGRAM_ID,
+        poolAddress: w.poolAddress,
+        anchorEpoch: 999n,
+        expiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n,
+      }),
       SCANNER_ID,
     );
     const out = await revalidateOpportunity({
@@ -144,7 +152,11 @@ describe("revalidateOpportunity", () => {
     // Overwrite the ANCHOR with a different epoch; cert now mismatches.
     w.rpc.setAccount(
       eligibilityAnchorPda(SCANNER_ID, RAYDIUM_V4_PROGRAM_ID, w.poolAddress),
-      encodeAnchor({ ammProgramId: RAYDIUM_V4_PROGRAM_ID, poolAddress: w.poolAddress, firstEligibleEpoch: 5n }),
+      encodeAnchor({
+        ammProgramId: RAYDIUM_V4_PROGRAM_ID,
+        poolAddress: w.poolAddress,
+        firstEligibleEpoch: 5n,
+      }),
       SCANNER_ID,
     );
     const out = await revalidateOpportunity({
@@ -191,8 +203,3 @@ describe("revalidateOpportunity", () => {
     assert.equal(out.ok ? null : out.failureClass, "missing-accounts");
   });
 });
-
-// helper used in one test above (epoch without a fixed world)
-function opts_currentEpoch(w: { rpc: { currentEpoch: number } }): number {
-  return w.rpc.currentEpoch;
-}

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
-import { GraveYieldClient, WSOL_MINT, vaultAuthorityPda } from "@graveyield/sdk";
+import { WSOL_MINT, vaultAuthorityPda } from "@graveyield/sdk";
 import {
   ExecutionPipeline,
   LocalAttestationSource,
@@ -51,14 +51,29 @@ function makeBot(opts?: {
     routeData: Uint8Array.from([1]),
     routeAccounts: [
       { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
-      { pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(new PublicKey(VAULT_ID)), true), isSigner: false, isWritable: true },
+      {
+        pubkey: getAssociatedTokenAddressSync(
+          WSOL_MINT,
+          vaultAuthorityPda(new PublicKey(VAULT_ID)),
+          true,
+        ),
+        isSigner: false,
+        isWritable: true,
+      },
     ],
     quotedAtMs: NOW(),
     adapter: "fake",
   }));
   const pipeline = new ExecutionPipeline({
     client: w.client,
-    policy: { botId: "experimental", cluster: "localnet", mode: opts?.mode ?? "dry-run", accepts: { kinds: ["certification-ready", "salvageable"] }, retryBackoffMs: 1, ...EXPERIMENTAL_TUNABLES } as ExecutionPolicy,
+    policy: {
+      botId: "experimental",
+      cluster: "localnet",
+      mode: opts?.mode ?? "dry-run",
+      accepts: { kinds: ["certification-ready", "salvageable"] },
+      retryBackoffMs: 1,
+      ...EXPERIMENTAL_TUNABLES,
+    } as ExecutionPolicy,
     liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "test" } : null,
     routeAdapter: route,
     eventSink: sink,
@@ -87,7 +102,11 @@ function makeBot(opts?: {
 
 function envelope(w: ReturnType<typeof buildWorld>) {
   return buildEnvelope({
-    identity: { cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() },
+    identity: {
+      cluster: "localnet",
+      ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      poolAddress: w.poolAddress.toBase58(),
+    },
     kind: "salvageable",
     sourceBot: "scout",
     detectedAtMs: FIXED_NOW_MS - 1_000,
@@ -115,7 +134,10 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
   test("an LP position above the fraction cap is rejected", async () => {
     // 5M of 10M supply = 50% > 20% cap. The fee cap is raised so the
     // LP cap is the binding constraint here.
-    const { w, bot } = makeBot({ salvorLpAmount: 5_000_000n, riskCaps: { maxPriorityFeeBudgetLamports: 400_000_000n } });
+    const { w, bot } = makeBot({
+      salvorLpAmount: 5_000_000n,
+      riskCaps: { maxPriorityFeeBudgetLamports: 400_000_000n },
+    });
     const out = await bot.processEnvelope(envelope(w));
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "risk-cap-exceeded");
@@ -125,7 +147,11 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
   test("the caps are evaluated BEFORE simulation (no wasted exposure)", async () => {
     const { w, bot, sink } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 1n } });
     await bot.processEnvelope(envelope(w));
-    assert.equal(sink.where((e) => e.type === "simulated").length, 0, "no simulation when the cap rejects");
+    assert.equal(
+      sink.where((e) => e.type === "simulated").length,
+      0,
+      "no simulation when the cap rejects",
+    );
   });
 });
 
@@ -149,9 +175,11 @@ describe("Experimental — attribution + isolation", () => {
     assert.notEqual(EXPERIMENTAL_TUNABLES, CONSERVATIVE_TUNABLES);
     assert.notEqual(EXPERIMENTAL_TUNABLES, SNIPER_TUNABLES);
     // Distinct values where strategies differ.
-    assert.notEqual(EXPERIMENTAL_TUNABLES.minNetProfitLamports, CONSERVATIVE_TUNABLES.minNetProfitLamports);
+    assert.notEqual(
+      EXPERIMENTAL_TUNABLES.minNetProfitLamports,
+      CONSERVATIVE_TUNABLES.minNetProfitLamports,
+    );
     assert.notEqual(EXPERIMENTAL_TUNABLES.feeMarginRatio, SNIPER_TUNABLES.feeMarginRatio);
-
   });
 
   test("experimental runs in its own store namespace (botId), so no cross-contamination", async () => {
@@ -190,7 +218,10 @@ describe("Experimental — never-weaken guarantees", () => {
     );
     const { bot } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
     const out = await bot.processEnvelope(envelope(w));
-    assert.ok(out.ok, "the cert is expired → revalidation flips to certification-ready → no cert exists → the ATOMIC certify path prepares");
+    assert.ok(
+      out.ok,
+      "the cert is expired → revalidation flips to certification-ready → no cert exists → the ATOMIC certify path prepares",
+    );
     // The prepared tx must be the certify-and-salvage bundle (fresh cert),
     // NOT a salvage against the expired cert.
     void out;

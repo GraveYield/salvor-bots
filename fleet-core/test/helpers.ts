@@ -8,12 +8,7 @@
 
 import { PublicKey, type AccountInfo, type Connection } from "@solana/web3.js";
 import bs58 from "bs58";
-import {
-  AccountDisc,
-  RAYDIUM_V4_AMM_INFO_SIZE,
-  WSOL_MINT,
-  writer,
-} from "@graveyield/sdk";
+import { AccountDisc, RAYDIUM_V4_AMM_INFO_SIZE, writer } from "@graveyield/sdk";
 
 // ------------------------------------------------------------- constants
 
@@ -254,12 +249,28 @@ export function makeSwapTxLike(opts: {
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
-        { accountIndex: 2, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.coinPre } },
-        { accountIndex: 3, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.pcPre } },
+        {
+          accountIndex: 2,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.coinPre },
+        },
+        {
+          accountIndex: 3,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.pcPre },
+        },
       ],
       postTokenBalances: [
-        { accountIndex: 2, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.coinPost } },
-        { accountIndex: 3, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.pcPost } },
+        {
+          accountIndex: 2,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.coinPost },
+        },
+        {
+          accountIndex: 3,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.pcPost },
+        },
       ],
     },
     blockTime: opts.blockTime,
@@ -330,7 +341,9 @@ export class FakeConnection {
     }
     const blockTime = this.blockTime - age;
     const signature = `SWAP_SIG_${blockTime}_${poolAddress.toBase58().slice(0, 6)}`;
-    this.signaturesByPool.set(poolAddress.toBase58(), [{ signature, slot: 99_000, err: null, blockTime }]);
+    this.signaturesByPool.set(poolAddress.toBase58(), [
+      { signature, slot: 99_000, err: null, blockTime },
+    ]);
     this.transactions.set(
       signature,
       makeSwapTxLike({
@@ -350,7 +363,10 @@ export class FakeConnection {
   }
 
   /** Fake "sender" — records the tx, returns a signature (or throws). */
-  async fakeSend(connection: Connection, tx: import("@solana/web3.js").Transaction): Promise<string> {
+  async fakeSend(
+    connection: Connection,
+    tx: import("@solana/web3.js").Transaction,
+  ): Promise<string> {
     void connection;
     if (this.sendError) throw this.sendError;
     this.sentTransactions.push(tx);
@@ -437,7 +453,10 @@ export class FakeConnection {
     return { blockhash: this.blockhash, lastValidBlockHeight: 10_000n };
   }
 
-  async simulateTransaction(_tx: unknown, _opts?: unknown): Promise<{ value: { err: unknown; logs: string[]; unitsConsumed: number } }> {
+  async simulateTransaction(
+    _tx: unknown,
+    _opts?: unknown,
+  ): Promise<{ value: { err: unknown; logs: string[]; unitsConsumed: number } }> {
     return { value: { ...this.simulationResult } };
   }
 }

@@ -28,7 +28,13 @@ import {
   type ScoutEvent,
 } from "@graveyield/scout";
 
-import { AlertManager, composeAlertSinks, ConsoleAlertSink, JsonlAlertSink, type AlertSink } from "./alerts.js";
+import {
+  AlertManager,
+  composeAlertSinks,
+  ConsoleAlertSink,
+  JsonlAlertSink,
+  type AlertSink,
+} from "./alerts.js";
 import { HealthRegistry } from "./health.js";
 import { FleetRunner } from "./runner.js";
 
@@ -75,9 +81,16 @@ export function parseArgs(argv: readonly string[]): Record<string, string | bool
 }
 
 /** Wire the full fleet service. Exported for tests. */
-export function wireFleet(config: FleetOpsConfig): { runner: FleetRunner; health: HealthRegistry; alerts: AlertManager } {
+export function wireFleet(config: FleetOpsConfig): {
+  runner: FleetRunner;
+  health: HealthRegistry;
+  alerts: AlertManager;
+} {
   const health = new HealthRegistry("graveyield-fleet");
-  const sinks: AlertSink[] = [new ConsoleAlertSink(), JsonlAlertSink.toFile(`${config.stateDir}/alerts.jsonl`)];
+  const sinks: AlertSink[] = [
+    new ConsoleAlertSink(),
+    JsonlAlertSink.toFile(`${config.stateDir}/alerts.jsonl`),
+  ];
   const alerts = new AlertManager(composeAlertSinks(...sinks), config.alertDedupMs);
 
   const monitorEventSink = new JsonlEventSink(`${config.stateDir}/monitor-events.jsonl`);
@@ -126,7 +139,6 @@ export function wireFleet(config: FleetOpsConfig): { runner: FleetRunner; health
 
 /** CLI main. */
 export async function main(argv: readonly string[]): Promise<number> {
-  const args = parseArgs(argv);
   const positional = (argv ?? []).filter((a) => !a.startsWith("--"));
   const cmd = positional[0] ?? "run";
   const config = loadFleetOpsConfig();

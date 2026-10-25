@@ -48,7 +48,6 @@ import {
   buildEvaluatePoolPhase2Ix,
   buildSalvagePoolIx,
   fetchSlotHash,
-  fetchV4Pool,
   IX_DATA_MSG_OFFSET,
   RAYDIUM_V4_PROGRAM_ID,
   decodeSalvageReceipt,
@@ -69,7 +68,11 @@ import type { ExecutionPolicy, LiveEnablement } from "./policy.js";
 import { validatePolicy, planFees } from "./policy.js";
 import { makeEvent, type FleetEventSink, type FailureClass } from "./events.js";
 import { revalidateOpportunity, type RevalidatedOpportunity } from "./revalidate.js";
-import { deriveV4CpiAccounts, toRemainingAccounts, MissingAccountsError } from "./raydiumAccounts.js";
+import {
+  deriveV4CpiAccounts,
+  toRemainingAccounts,
+  MissingAccountsError,
+} from "./raydiumAccounts.js";
 import type { RouteAdapter, RouteQuote } from "./route.js";
 import { RouteError } from "./route.js";
 import type { OpportunityEnvelope } from "./envelope.js";
@@ -96,7 +99,9 @@ export interface AttestationSource {
    * oracle's public key (the pipeline does not assume which key it is —
    * the on-chain validator binds it to ProtocolConfig.activity_oracle).
    */
-  signAttestation(message: Uint8Array): Promise<{ signature: Uint8Array; oraclePublicKey: PublicKey }>;
+  signAttestation(
+    message: Uint8Array,
+  ): Promise<{ signature: Uint8Array; oraclePublicKey: PublicKey }>;
 }
 
 /** A local oracle keypair source (tests + devnet drill). */
@@ -149,7 +154,14 @@ export interface PreparedTransaction {
 /** Pipeline result for one attempted execution. */
 export interface PipelineOutcome {
   ok: boolean;
-  stage: "revalidated" | "economic-reject" | "prepared" | "simulated" | "submitted" | "confirmed" | "failed";
+  stage:
+    | "revalidated"
+    | "economic-reject"
+    | "prepared"
+    | "simulated"
+    | "submitted"
+    | "confirmed"
+    | "failed";
   failureClass?: FailureClass;
   reason?: string;
   prepared?: PreparedTransaction;
@@ -204,7 +216,11 @@ export class ExecutionPipeline {
     this.now = opts.now ?? Date.now;
   }
 
-  private emit(type: Parameters<typeof makeEvent>[0]["type"], data: Record<string, unknown>, extra?: Partial<Parameters<typeof makeEvent>[0]>): void {
+  private emit(
+    type: Parameters<typeof makeEvent>[0]["type"],
+    data: Record<string, unknown>,
+    extra?: Partial<Parameters<typeof makeEvent>[0]>,
+  ): void {
     this.sink.emit(
       makeEvent({
         botId: this.policy.botId,
@@ -298,10 +314,15 @@ export class ExecutionPipeline {
     const plan = planFees({
       policy: this.policy,
       expectedProfitLamports: new BN((grossPass.salvorGrossShareLamports ?? 0n).toString(10)),
-      protocolCeilingMicroLamportsPerCu: new BN(rv.vaultConfig.maxPriorityFeeCeilingLamports.toString(10)),
+      protocolCeilingMicroLamportsPerCu: new BN(
+        rv.vaultConfig.maxPriorityFeeCeilingLamports.toString(10),
+      ),
     });
     const priorityFeeBudgetLamports = BigInt(
-      plan.maxMicroLamportsPerCu.mul(new BN(this.policy.computeUnitLimit)).div(new BN(1_000_000)).toString(10),
+      plan.maxMicroLamportsPerCu
+        .mul(new BN(this.policy.computeUnitLimit))
+        .div(new BN(1_000_000))
+        .toString(10),
     );
 
     // Pass 2: the full economics with the real fee budget.
@@ -365,21 +386,39 @@ export class ExecutionPipeline {
         options: { now: this.now },
       });
       if (!outcome.ok) {
-        this.emit("revalidation-rejected", { reason: outcome.reason }, {
-          identity,
+        this.emit(
+          "revalidation-rejected",
+          { reason: outcome.reason },
+          {
+            identity,
+            failureClass: outcome.failureClass,
+          },
+        );
+        return {
+          ok: false,
+          stage: "revalidated",
           failureClass: outcome.failureClass,
-        });
-        return { ok: false, stage: "revalidated", failureClass: outcome.failureClass, reason: outcome.reason };
+          reason: outcome.reason,
+        };
       }
       rv = outcome.opportunity;
     } catch (err) {
-      return { ok: false, stage: "revalidated", failureClass: "transient-rpc", reason: `revalidation threw: ${String(err)}` };
+      return {
+        ok: false,
+        stage: "revalidated",
+        failureClass: "transient-rpc",
+        reason: `revalidation threw: ${String(err)}`,
+      };
     }
 
     // Strategy filter: kind acceptance.
     if (!this.policy.accepts.kinds.includes(rv.kind)) {
       const reason = `strategy does not accept kind "${rv.kind}" (envelope said "${envelope.kind}")`;
-      this.emit("revalidation-rejected", { reason }, { identity, failureClass: "stale-opportunity" });
+      this.emit(
+        "revalidation-rejected",
+        { reason },
+        { identity, failureClass: "stale-opportunity" },
+      );
       return { ok: false, stage: "revalidated", failureClass: "stale-opportunity", reason };
     }
 
@@ -398,7 +437,11 @@ export class ExecutionPipeline {
     const salvorLpAmount = await this.readSalvorLpBalance(salvor, rv.pool.lpMint);
     if (salvorLpAmount === 0n) {
       const reason = `salvor holds no LP for pool ${pool.toBase58()} — nothing to burn`;
-      this.emit("revalidation-rejected", { reason }, { identity, failureClass: "missing-accounts" });
+      this.emit(
+        "revalidation-rejected",
+        { reason },
+        { identity, failureClass: "missing-accounts" },
+      );
       return { ok: false, stage: "revalidated", failureClass: "missing-accounts", reason };
     }
 
@@ -408,8 +451,17 @@ export class ExecutionPipeline {
     try {
       snapshot = await snapshotLpHolders(this.client.connection, pool);
     } catch (err) {
-      this.emit("revalidation-rejected", { reason: String(err) }, { identity, failureClass: "snapshot-incomplete" });
-      return { ok: false, stage: "revalidated", failureClass: "snapshot-incomplete", reason: String(err) };
+      this.emit(
+        "revalidation-rejected",
+        { reason: String(err) },
+        { identity, failureClass: "snapshot-incomplete" },
+      );
+      return {
+        ok: false,
+        stage: "revalidated",
+        failureClass: "snapshot-incomplete",
+        reason: String(err),
+      };
     }
     const liveSupply = await readLpMintSupply(this.client.connection, rv.pool.lpMint);
     if (liveSupply !== BigInt(snapshot.snapshot.totalSupply.toString(10))) {
@@ -423,12 +475,18 @@ export class ExecutionPipeline {
     let estimate: EconomicEstimate;
     let quoteIsFresh: boolean;
     try {
-      const econ = await this.estimateCurrent({ revalidated: rv, salvor, salvorLpAmount, envelope });
+      const econ = await this.estimateCurrent({
+        revalidated: rv,
+        salvor,
+        salvorLpAmount,
+        envelope,
+      });
       quote = econ.route;
       estimate = econ.estimate;
       quoteIsFresh = econ.quoteIsFresh;
     } catch (err) {
-      const failureClass: FailureClass = err instanceof RouteError ? "route-failure" : "transient-route";
+      const failureClass: FailureClass =
+        err instanceof RouteError ? "route-failure" : "transient-route";
       this.emit("revalidation-rejected", { reason: String(err) }, { identity, failureClass });
       return { ok: false, stage: "revalidated", failureClass, reason: String(err) };
     }
@@ -448,13 +506,17 @@ export class ExecutionPipeline {
       this.emit("economic-reject", { reason }, { identity, failureClass: "economic-insufficient" });
       return { ok: false, stage: "economic-reject", failureClass: "economic-insufficient", reason };
     }
-    this.emit("economic-pass", {
-      netProfitLamports: estimate.netProfitLamports?.toString(),
-      grossProceedsWsolLamports: estimate.grossProceedsWsolLamports?.toString(),
-      minQuoteOutputLamports: estimate.minQuoteOutputLamports?.toString(),
-      effectiveSlippageBps: estimate.effectiveSlippageBps,
-      swapLegBelowDust: estimate.swapLegBelowDust,
-    }, { identity });
+    this.emit(
+      "economic-pass",
+      {
+        netProfitLamports: estimate.netProfitLamports?.toString(),
+        grossProceedsWsolLamports: estimate.grossProceedsWsolLamports?.toString(),
+        minQuoteOutputLamports: estimate.minQuoteOutputLamports?.toString(),
+        effectiveSlippageBps: estimate.effectiveSlippageBps,
+        swapLegBelowDust: estimate.swapLegBelowDust,
+      },
+      { identity },
+    );
 
     // 6. Route validation — untrusted until proven otherwise.
     const routeProblem = validateRouteForSalvage(quote, {
@@ -465,15 +527,26 @@ export class ExecutionPipeline {
       vaultWsolAta: getAssociatedTokenAddressSync(WSOL_MINT, await this.vaultAuthorityPda(), true),
     });
     if (routeProblem) {
-      this.emit("revalidation-rejected", { reason: routeProblem }, { identity, failureClass: "route-failure" });
-      return { ok: false, stage: "revalidated", failureClass: "route-failure", reason: routeProblem };
+      this.emit(
+        "revalidation-rejected",
+        { reason: routeProblem },
+        { identity, failureClass: "route-failure" },
+      );
+      return {
+        ok: false,
+        stage: "revalidated",
+        failureClass: "route-failure",
+        reason: routeProblem,
+      };
     }
 
     // 7. Assemble the transaction for the CURRENT kind.
     const feePlan = planFees({
       policy: this.policy,
       expectedProfitLamports: new BN((estimate.salvorGrossShareLamports ?? 0n).toString(10)),
-      protocolCeilingMicroLamportsPerCu: new BN(rv.vaultConfig.maxPriorityFeeCeilingLamports.toString(10)),
+      protocolCeilingMicroLamportsPerCu: new BN(
+        rv.vaultConfig.maxPriorityFeeCeilingLamports.toString(10),
+      ),
     });
 
     const salvageIxInput = {
@@ -498,12 +571,24 @@ export class ExecutionPipeline {
 
     let prepared: PreparedTransaction;
     if (rv.kind === "salvageable") {
-      prepared = await this.assembleSalvageOnlyTx({ rv, salvageIxInput, feePrice: feePlan.maxMicroLamportsPerCu, snapshot, estimate, route: quote });
+      prepared = await this.assembleSalvageOnlyTx({
+        rv,
+        salvageIxInput,
+        feePrice: feePlan.maxMicroLamportsPerCu,
+        snapshot,
+        estimate,
+        route: quote,
+      });
     } else {
       // certification-ready → certify + salvage in ONE atomic tx.
       if (!opts.attestationSource) {
-        const reason = "certification-ready requires an AttestationSource (oracle-signed C1) — none configured";
-        this.emit("revalidation-rejected", { reason }, { identity, failureClass: "config-invalid" });
+        const reason =
+          "certification-ready requires an AttestationSource (oracle-signed C1) — none configured";
+        this.emit(
+          "revalidation-rejected",
+          { reason },
+          { identity, failureClass: "config-invalid" },
+        );
         return { ok: false, stage: "revalidated", failureClass: "config-invalid", reason };
       }
       prepared = await this.assembleCertifyAndSalvageTx({
@@ -517,18 +602,22 @@ export class ExecutionPipeline {
       });
     }
 
-    this.emit("prepared", {
-      kind: prepared.kind,
-      scannerIxIndex: prepared.scannerIxIndex,
-      salvageIxIndex: prepared.salvageIxIndex,
-      feeMicroLamportsPerCu: prepared.feeMicroLamportsPerCu.toString(),
-      computeUnitLimit: prepared.computeUnitLimit,
-      holderCount: prepared.snapshotSummary.holderCount,
-      snapshotSupply: prepared.snapshotSummary.totalSupply.toString(),
-      salvorLpAmount: prepared.snapshotSummary.salvorLpAmount.toString(),
-      minQuoteOutputLamports: prepared.minQuoteOutputLamports.toString(),
-      routeAccounts: prepared.route.routeAccounts.length,
-    }, { identity });
+    this.emit(
+      "prepared",
+      {
+        kind: prepared.kind,
+        scannerIxIndex: prepared.scannerIxIndex,
+        salvageIxIndex: prepared.salvageIxIndex,
+        feeMicroLamportsPerCu: prepared.feeMicroLamportsPerCu.toString(),
+        computeUnitLimit: prepared.computeUnitLimit,
+        holderCount: prepared.snapshotSummary.holderCount,
+        snapshotSupply: prepared.snapshotSummary.totalSupply.toString(),
+        salvorLpAmount: prepared.snapshotSummary.salvorLpAmount.toString(),
+        minQuoteOutputLamports: prepared.minQuoteOutputLamports.toString(),
+        routeAccounts: prepared.route.routeAccounts.length,
+      },
+      { identity },
+    );
 
     return { ok: true, stage: "prepared", prepared, estimate };
   }
@@ -588,7 +677,9 @@ export class ExecutionPipeline {
     const issuedSlot = await connection.getSlot();
     const slotHash = await fetchSlotHash(connection, issuedSlot);
     if (!slotHash) {
-      throw new Error(`slot hash unavailable for slot ${issuedSlot} — attestation cannot be anchored`);
+      throw new Error(
+        `slot hash unavailable for slot ${issuedSlot} — attestation cannot be anchored`,
+      );
     }
 
     // The last-swap timestamp must be REAL: re-derive from Raydium V4
@@ -686,16 +777,25 @@ export class ExecutionPipeline {
   // -------------------------------------------------- simulate + submit
 
   /** Simulate a prepared transaction against current state. */
-  async simulate(prepared: PreparedTransaction, identity?: import("./envelope.js").FleetOpportunityIdentity): Promise<PipelineOutcome> {
+  async simulate(
+    prepared: PreparedTransaction,
+    identity?: import("./envelope.js").FleetOpportunityIdentity,
+  ): Promise<PipelineOutcome> {
     // A valid recent blockhash is required for simulation; fetch one now.
     const { blockhash } = await this.client.connection.getLatestBlockhash();
     prepared.tx.recentBlockhash = blockhash;
     if (prepared.feeMicroLamportsPerCu.gt(new BN(0))) {
       // Belt-and-braces Charter guard at the gate (the SDK's
       // computeBudgetIxs already checked the attached price).
-      const rejection = await this.client.charterGuard({ feeLamportsPerCu: prepared.feeMicroLamportsPerCu });
+      const rejection = await this.client.charterGuard({
+        feeLamportsPerCu: prepared.feeMicroLamportsPerCu,
+      });
       if (rejection) {
-        this.emit("simulation-failed", { reason: rejection }, { identity, failureClass: "charter-refusal" });
+        this.emit(
+          "simulation-failed",
+          { reason: rejection },
+          { identity, failureClass: "charter-refusal" },
+        );
         return { ok: false, stage: "failed", failureClass: "charter-refusal", reason: rejection };
       }
     }
@@ -706,12 +806,26 @@ export class ExecutionPipeline {
       // merge with the message-regex decoder so e.g. 7002 renders as
       // GraveVault::EligibilityCertExpired even without logs.
       const structured = extractCustomErrorCode(sim.raw.err);
-      const decoded = sim.graveYieldError ?? (structured !== null ? decodeGraveYieldErrorCode(structured) : undefined);
-      this.emit("simulation-failed", {
-        reason: decoded ? `${decoded.program}::${decoded.name} (${decoded.hex}): ${decoded.description}` : JSON.stringify(sim.raw.err),
-        logs: sim.logs ?? undefined,
-      }, { identity, failureClass: "simulation-failed" });
-      return { ok: false, stage: "failed", failureClass: "simulation-failed", reason: decoded?.name ?? "simulation error", simulation: sim };
+      const decoded =
+        sim.graveYieldError ??
+        (structured !== null ? decodeGraveYieldErrorCode(structured) : undefined);
+      this.emit(
+        "simulation-failed",
+        {
+          reason: decoded
+            ? `${decoded.program}::${decoded.name} (${decoded.hex}): ${decoded.description}`
+            : JSON.stringify(sim.raw.err),
+          logs: sim.logs ?? undefined,
+        },
+        { identity, failureClass: "simulation-failed" },
+      );
+      return {
+        ok: false,
+        stage: "failed",
+        failureClass: "simulation-failed",
+        reason: decoded?.name ?? "simulation error",
+        simulation: sim,
+      };
     }
     this.emit("simulated", { unitsConsumed: sim.unitsConsumed }, { identity });
     return { ok: true, stage: "simulated", prepared, simulation: sim };
@@ -728,9 +842,13 @@ export class ExecutionPipeline {
     identity?: import("./envelope.js").FleetOpportunityIdentity;
   }): Promise<PipelineOutcome> {
     if (this.policy.mode !== "live") {
-      this.emit("error", {
-        reason: `mode "${this.policy.mode}" never submits — flip to live with explicit operator enablement`,
-      }, { identity: opts.identity, failureClass: "config-invalid" });
+      this.emit(
+        "error",
+        {
+          reason: `mode "${this.policy.mode}" never submits — flip to live with explicit operator enablement`,
+        },
+        { identity: opts.identity, failureClass: "config-invalid" },
+      );
       throw new Error(
         `submit refused: mode "${this.policy.mode}" never submits — flip to live with explicit operator enablement`,
       );
@@ -739,16 +857,30 @@ export class ExecutionPipeline {
     this.emit("submitted", { signature }, { identity: opts.identity });
     const receipt = await this.verifySalvageReceipt(opts.prepared, signature);
     if (receipt.ok) {
-      this.emit("confirmed", {
+      this.emit(
+        "confirmed",
+        {
+          signature,
+          totalProceedsLamports: receipt.receipt?.totalProceedsLamports.toString(),
+          salvorAmountLamports: receipt.receipt?.salvorAmountLamports.toString(),
+        },
+        { identity: opts.identity },
+      );
+      return {
+        ok: true,
+        stage: "confirmed",
         signature,
-        totalProceedsLamports: receipt.receipt?.totalProceedsLamports.toString(),
-        salvorAmountLamports: receipt.receipt?.salvorAmountLamports.toString(),
-      }, { identity: opts.identity });
-      return { ok: true, stage: "confirmed", signature, receipt: receipt.receipt, prepared: opts.prepared };
+        receipt: receipt.receipt,
+        prepared: opts.prepared,
+      };
     }
     // The tx landed but the receipt read didn't resolve yet — report
     // submission; the Monitor owns the reconciliation retry.
-    this.emit("confirmed", { signature, receiptVerification: receipt.reason }, { identity: opts.identity });
+    this.emit(
+      "confirmed",
+      { signature, receiptVerification: receipt.reason },
+      { identity: opts.identity },
+    );
     return { ok: true, stage: "confirmed", signature, prepared: opts.prepared };
   }
 
@@ -756,7 +888,9 @@ export class ExecutionPipeline {
   private async verifySalvageReceipt(
     prepared: PreparedTransaction,
     _signature: string,
-  ): Promise<{ ok: false; reason: string } | { ok: true; receipt: NonNullable<PipelineOutcome["receipt"]> }> {
+  ): Promise<
+    { ok: false; reason: string } | { ok: true; receipt: NonNullable<PipelineOutcome["receipt"]> }
+  > {
     try {
       // Deterministic: the salvage ix's 4th named account IS the receipt PDA.
       const salvageIx = prepared.tx.instructions[prepared.salvageIxIndex];

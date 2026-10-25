@@ -21,7 +21,6 @@ import assert from "node:assert/strict";
 import { Connection, PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import {
-  GraveYieldClient,
   DEVNET_SCANNER_PROGRAM_ID,
   DEVNET_VAULT_PROGRAM_ID,
   scannerProtocolConfigPda,
@@ -32,12 +31,7 @@ import {
   VAULT_PROTOCOL_CONFIG_DEFAULTS,
 } from "@graveyield/sdk";
 
-import {
-  ScoutSalvor,
-  MemoryReportSink,
-  RaydiumV4Source,
-  type ScoutOptions,
-} from "../src/index.js";
+import { ScoutSalvor, MemoryReportSink, RaydiumV4Source, type ScoutOptions } from "../src/index.js";
 
 const DEVNET_RPC = process.env.DEVNET_RPC_URL;
 const SKIP = !DEVNET_RPC;
@@ -76,12 +70,18 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
   const connection = new Connection(DEVNET_RPC ?? "http://localhost:8899", "confirmed");
 
   test("GraveScanner ProtocolConfig decodes with all spec defaults", async () => {
-    const cfg = await fetchScannerProtocolConfig(connection, scannerProtocolConfigPda(scannerProgramId));
+    const cfg = await fetchScannerProtocolConfig(
+      connection,
+      scannerProtocolConfigPda(scannerProgramId),
+    );
     assert.ok(cfg, "scanner ProtocolConfig must be initialized on devnet");
     assert.equal(cfg.inactivitySeconds, SCANNER_PROTOCOL_CONFIG_DEFAULTS.inactivitySeconds);
     assert.equal(cfg.priceCollapseBps, SCANNER_PROTOCOL_CONFIG_DEFAULTS.priceCollapseBps);
     assert.equal(cfg.minTvlLamports, SCANNER_PROTOCOL_CONFIG_DEFAULTS.minTvlLamports);
-    assert.equal(cfg.anchorStalenessSeconds, SCANNER_PROTOCOL_CONFIG_DEFAULTS.anchorStalenessSeconds);
+    assert.equal(
+      cfg.anchorStalenessSeconds,
+      SCANNER_PROTOCOL_CONFIG_DEFAULTS.anchorStalenessSeconds,
+    );
     assert.equal(cfg.lpBurnDustThreshold, SCANNER_PROTOCOL_CONFIG_DEFAULTS.lpBurnDustThreshold);
     assert.equal(cfg.certTtlSeconds, SCANNER_PROTOCOL_CONFIG_DEFAULTS.certTtlSeconds);
     assert.equal(cfg.paused, false);
@@ -93,9 +93,15 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     assert.equal(cfg.lpHolderShareBps, VAULT_PROTOCOL_CONFIG_DEFAULTS.lpHolderShareBps);
     assert.equal(cfg.salvorShareBps, VAULT_PROTOCOL_CONFIG_DEFAULTS.salvorShareBps);
     assert.equal(cfg.protocolShareBps, VAULT_PROTOCOL_CONFIG_DEFAULTS.protocolShareBps);
-    assert.equal(cfg.maxPriorityFeeCeilingLamports, VAULT_PROTOCOL_CONFIG_DEFAULTS.maxPriorityFeeCeilingLamports);
+    assert.equal(
+      cfg.maxPriorityFeeCeilingLamports,
+      VAULT_PROTOCOL_CONFIG_DEFAULTS.maxPriorityFeeCeilingLamports,
+    );
     assert.equal(cfg.maxSlippageBps, VAULT_PROTOCOL_CONFIG_DEFAULTS.maxSlippageBps);
-    assert.equal(cfg.jupiterDustThresholdLamports, VAULT_PROTOCOL_CONFIG_DEFAULTS.jupiterDustThresholdLamports);
+    assert.equal(
+      cfg.jupiterDustThresholdLamports,
+      VAULT_PROTOCOL_CONFIG_DEFAULTS.jupiterDustThresholdLamports,
+    );
     assert.equal(cfg.timelockSeconds, VAULT_PROTOCOL_CONFIG_DEFAULTS.timelockSeconds);
     assert.equal(cfg.emergencyPaused, false);
   });

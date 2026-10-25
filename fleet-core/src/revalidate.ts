@@ -34,7 +34,6 @@ import {
   WSOL_MINT,
   RAYDIUM_V4_PROGRAM_ID,
 } from "@graveyield/sdk";
-import type { OpportunityKind } from "./envelope.js";
 import type { FailureClass } from "./events.js";
 
 /** Fully revalidated live state for one opportunity. */
@@ -70,8 +69,7 @@ export interface RevalidationRejection {
 }
 
 export type RevalidationOutcome =
-  | { ok: true; opportunity: RevalidatedOpportunity }
-  | RevalidationRejection;
+  { ok: true; opportunity: RevalidatedOpportunity } | RevalidationRejection;
 
 /** Revalidation options — clock injectable for tests. */
 export interface RevalidatorOptions {
@@ -106,7 +104,11 @@ export async function revalidateOpportunity(opts: {
   try {
     ({ scanner: scannerConfig, vault: vaultConfig } = await client.ensureConfigs());
   } catch (err) {
-    return { ok: false, failureClass: "transient-rpc", reason: `protocol configs unavailable: ${String(err)}` };
+    return {
+      ok: false,
+      failureClass: "transient-rpc",
+      reason: `protocol configs unavailable: ${String(err)}`,
+    };
   }
 
   // --- Pool account.
@@ -114,7 +116,11 @@ export async function revalidateOpportunity(opts: {
   try {
     pool = await fetchV4Pool(client.connection, poolAddress);
   } catch (err) {
-    return { ok: false, failureClass: "missing-accounts", reason: `pool unreadable: ${String(err)}` };
+    return {
+      ok: false,
+      failureClass: "missing-accounts",
+      reason: `pool unreadable: ${String(err)}`,
+    };
   }
 
   // --- Orientation (7019 shape).
@@ -135,7 +141,11 @@ export async function revalidateOpportunity(opts: {
     pcReserve = await readVaultReserve(client.connection, pool.pcVault);
     lpSupply = await readLpMintSupply(client.connection, pool.lpMint);
   } catch (err) {
-    return { ok: false, failureClass: "transient-rpc", reason: `reserves unreadable: ${String(err)}` };
+    return {
+      ok: false,
+      failureClass: "transient-rpc",
+      reason: `reserves unreadable: ${String(err)}`,
+    };
   }
   if (lpSupply <= scannerConfig.lpBurnDustThreshold) {
     return {
@@ -169,11 +179,13 @@ export async function revalidateOpportunity(opts: {
   // --- Current kind from LIVE state (the envelope's kind is context).
   let currentEpoch: number;
   try {
-    currentEpoch =
-      opts.options?.currentEpoch ??
-      (await client.connection.getEpochInfo()).epoch;
+    currentEpoch = opts.options?.currentEpoch ?? (await client.connection.getEpochInfo()).epoch;
   } catch (err) {
-    return { ok: false, failureClass: "transient-rpc", reason: `epoch unavailable: ${String(err)}` };
+    return {
+      ok: false,
+      failureClass: "transient-rpc",
+      reason: `epoch unavailable: ${String(err)}`,
+    };
   }
   const epochsElapsed = currentEpoch - Number(anchor.firstEligibleEpoch);
   const epochGapSatisfied = epochsElapsed >= 2; // MIN_EPOCH_CONFIRMATION

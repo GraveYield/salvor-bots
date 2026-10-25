@@ -218,12 +218,28 @@ export function makeSwapTxLike(opts: {
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
-        { accountIndex: 2, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.coinPre } },
-        { accountIndex: 3, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.pcPre } },
+        {
+          accountIndex: 2,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.coinPre },
+        },
+        {
+          accountIndex: 3,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.pcPre },
+        },
       ],
       postTokenBalances: [
-        { accountIndex: 2, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.coinPost } },
-        { accountIndex: 3, mint: opts.poolAddress.toBase58(), uiTokenAmount: { amount: opts.pcPost } },
+        {
+          accountIndex: 2,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.coinPost },
+        },
+        {
+          accountIndex: 3,
+          mint: opts.poolAddress.toBase58(),
+          uiTokenAmount: { amount: opts.pcPost },
+        },
       ],
     },
     blockTime: opts.blockTime,
@@ -307,7 +323,6 @@ export class FakeConnection {
   }
 
   asConnection(): Connection {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this as unknown as Connection;
   }
 
@@ -450,16 +465,41 @@ export function installPool(
     }),
     V4,
   );
-  fake.setAccount(coinVault, encodeTokenAccount(coinIsWsol ? quoteMint : baseMint, coinReserve), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-  fake.setAccount(pcVault, encodeTokenAccount(coinIsWsol ? baseMint : quoteMint, pcReserve), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-  fake.setAccount(lpMint, encodeMint(6, opts.lpSupply ?? 1_000_000_000n), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-  fake.setAccount(baseMint, encodeMint(9, 10_000_000_000n), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-  fake.setAccount(quoteMint, encodeMint(9, 10_000_000_000n), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
+  fake.setAccount(
+    coinVault,
+    encodeTokenAccount(coinIsWsol ? quoteMint : baseMint, coinReserve),
+    new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  );
+  fake.setAccount(
+    pcVault,
+    encodeTokenAccount(coinIsWsol ? baseMint : quoteMint, pcReserve),
+    new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  );
+  fake.setAccount(
+    lpMint,
+    encodeMint(6, opts.lpSupply ?? 1_000_000_000n),
+    new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  );
+  fake.setAccount(
+    baseMint,
+    encodeMint(9, 10_000_000_000n),
+    new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  );
+  fake.setAccount(
+    quoteMint,
+    encodeMint(9, 10_000_000_000n),
+    new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  );
 
-  fake.setSwapHistory(opts.poolAddress, V4, { coinVault, pcVault }, {
-    lastSwapAgeSeconds: opts.lastSwapAgeSeconds,
-    neverSwapped: opts.neverSwapped,
-  });
+  fake.setSwapHistory(
+    opts.poolAddress,
+    V4,
+    { coinVault, pcVault },
+    {
+      lastSwapAgeSeconds: opts.lastSwapAgeSeconds,
+      neverSwapped: opts.neverSwapped,
+    },
+  );
 
   return { poolAddress: opts.poolAddress, coinVault, pcVault, baseMint, quoteMint, lpMint };
 }

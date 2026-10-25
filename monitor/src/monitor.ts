@@ -34,9 +34,7 @@ import {
 } from "@graveyield/sdk";
 
 import {
-  keyOfEnvelope,
   makeEvent,
-  opportunityKey,
   type FleetEvent,
   type FleetEventSink,
   type FleetEventType,
@@ -96,11 +94,7 @@ export interface Reconciliation {
   signature: string;
   /** "receipt-verified": receipt found + sums + bot attribution match. */
   status:
-    | "receipt-verified"
-    | "receipt-missing"
-    | "receipt-anomaly"
-    | "cert-gone"
-    | "chain-unreadable";
+    "receipt-verified" | "receipt-missing" | "receipt-anomaly" | "cert-gone" | "chain-unreadable";
   /** Human/JSON diagnostics. */
   detail: Record<string, unknown>;
   /** The on-chain receipt when found. */
@@ -236,7 +230,11 @@ export class FleetMonitor {
     switch (event.type) {
       case "opportunity-received":
       case "revalidated":
-        obs.claims.push({ bot: event.botId, kind: String((event.data as { kind?: unknown })?.kind ?? "unknown"), tsMs: event.tsMs });
+        obs.claims.push({
+          bot: event.botId,
+          kind: String((event.data as { kind?: unknown })?.kind ?? "unknown"),
+          tsMs: event.tsMs,
+        });
         break;
       case "economic-pass":
       case "prepared":
@@ -253,12 +251,14 @@ export class FleetMonitor {
       case "confirmed": {
         const signature = signatureData?.signature;
         if (signature) obs.signatures.push({ bot: event.botId, signature, tsMs: event.tsMs });
-        const receipt = (event.data as {
-          totalProceedsLamports?: string;
-          salvorAmountLamports?: string;
-          lpHolderAmountLamports?: string;
-          protocolAmountLamports?: string;
-        } | undefined);
+        const receipt = event.data as
+          | {
+              totalProceedsLamports?: string;
+              salvorAmountLamports?: string;
+              lpHolderAmountLamports?: string;
+              protocolAmountLamports?: string;
+            }
+          | undefined;
         if (receipt?.totalProceedsLamports) {
           obs.reportedReceipt = {
             totalProceedsLamports: receipt.totalProceedsLamports ?? "0",
@@ -320,8 +320,15 @@ export class FleetMonitor {
       certExpiresAt: null,
     };
     this.observations.set(`__scout__${event.pool}`, created);
-    if (event.type === "opportunity:salvageable" || event.type === "opportunity:certification-ready") {
-      this.emit("monitor-observation", { observed: event.type, source: "scout" }, created.identityKey);
+    if (
+      event.type === "opportunity:salvageable" ||
+      event.type === "opportunity:certification-ready"
+    ) {
+      this.emit(
+        "monitor-observation",
+        { observed: event.type, source: "scout" },
+        created.identityKey,
+      );
     }
   }
 
@@ -434,7 +441,12 @@ export class FleetMonitor {
             tsMs: now,
             severity: cls.startsWith("transient") ? "warning" : "critical",
             identityKey: obs.identityKey,
-            code: cls === "simulation-failed" ? "failed-simulation" : cls === "submission-failed" ? "failed-submission" : "repeated-attempts",
+            code:
+              cls === "simulation-failed"
+                ? "failed-simulation"
+                : cls === "submission-failed"
+                  ? "failed-submission"
+                  : "repeated-attempts",
             detail: { failureClass: cls, count },
           });
         }
@@ -458,22 +470,50 @@ export class FleetMonitor {
     try {
       poolPubkey = new PublicKey(poolAddress);
     } catch {
-      return { identityKey, poolAddress, bot, signature, status: "chain-unreadable", detail: { error: "unparseable pool address" }, receipt: null };
+      return {
+        identityKey,
+        poolAddress,
+        bot,
+        signature,
+        status: "chain-unreadable",
+        detail: { error: "unparseable pool address" },
+        receipt: null,
+      };
     }
 
     let info = null;
     try {
-      info = await this.client.connection.getAccountInfo(salvageReceiptPda(this.client.graveVaultProgramId, poolPubkey));
+      info = await this.client.connection.getAccountInfo(
+        salvageReceiptPda(this.client.graveVaultProgramId, poolPubkey),
+      );
     } catch (err) {
-      return { identityKey, poolAddress, bot, signature, status: "chain-unreadable", detail: { error: String(err) }, receipt: null };
+      return {
+        identityKey,
+        poolAddress,
+        bot,
+        signature,
+        status: "chain-unreadable",
+        detail: { error: String(err) },
+        receipt: null,
+      };
     }
     if (!info) {
       this.emit("monitor-mismatch", { status: "receipt-missing", signature, bot }, identityKey);
-      return { identityKey, poolAddress, bot, signature, status: "receipt-missing", detail: { note: "no SalvageReceipt PDA on chain for this pool" }, receipt: null };
+      return {
+        identityKey,
+        poolAddress,
+        bot,
+        signature,
+        status: "receipt-missing",
+        detail: { note: "no SalvageReceipt PDA on chain for this pool" },
+        receipt: null,
+      };
     }
     const receipt = decodeSalvageReceipt(info.data);
     const sum =
-      receipt.lpHolderAmountLamports + receipt.salvorAmountLamports + receipt.protocolAmountLamports;
+      receipt.lpHolderAmountLamports +
+      receipt.salvorAmountLamports +
+      receipt.protocolAmountLamports;
     const sumsOk = sum === receipt.totalProceedsLamports;
     const sharesOk =
       // Each leg within 1 lamport of its 40/40/20 share of total.
@@ -488,16 +528,21 @@ export class FleetMonitor {
       (obs.reportedReceipt.totalProceedsLamports === receipt.totalProceedsLamports.toString(10) &&
         obs.reportedReceipt.salvorAmountLamports === receipt.salvorAmountLamports.toString(10));
 
-    const status: Reconciliation["status"] = sumsOk && sharesOk && reportedOk ? "receipt-verified" : "receipt-anomaly";
-    this.emit(status === "receipt-verified" ? "monitor-reconciled" : "monitor-mismatch", {
-      status,
-      signature,
-      sum: sum.toString(10),
-      total: receipt.totalProceedsLamports.toString(10),
-      reportedOk,
-      sumsOk,
-      sharesOk,
-    }, identityKey);
+    const status: Reconciliation["status"] =
+      sumsOk && sharesOk && reportedOk ? "receipt-verified" : "receipt-anomaly";
+    this.emit(
+      status === "receipt-verified" ? "monitor-reconciled" : "monitor-mismatch",
+      {
+        status,
+        signature,
+        sum: sum.toString(10),
+        total: receipt.totalProceedsLamports.toString(10),
+        reportedOk,
+        sumsOk,
+        sharesOk,
+      },
+      identityKey,
+    );
 
     return {
       identityKey,
@@ -524,10 +569,17 @@ export class FleetMonitor {
   }
 
   /** Check the LIVE cert state for an identity (cert gone / still valid). */
-  async checkCert(ammProgramId: string, poolAddress: string): Promise<{ exists: boolean; expiresAt: bigint | null }> {
+  async checkCert(
+    ammProgramId: string,
+    poolAddress: string,
+  ): Promise<{ exists: boolean; expiresAt: bigint | null }> {
     const cert = await fetchEligibilityCert(
       this.client.connection,
-      eligibilityCertPda(this.client.graveScannerProgramId, new PublicKey(ammProgramId), new PublicKey(poolAddress)),
+      eligibilityCertPda(
+        this.client.graveScannerProgramId,
+        new PublicKey(ammProgramId),
+        new PublicKey(poolAddress),
+      ),
     );
     return { exists: cert !== null, expiresAt: cert?.expiresAt ?? null };
   }

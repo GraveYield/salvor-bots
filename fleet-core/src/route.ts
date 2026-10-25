@@ -109,7 +109,6 @@ export class JupiterV6RouteAdapter implements RouteAdapter {
 
   async quote(req: RouteQuoteRequest): Promise<RouteQuote> {
     const fetchImpl = this.opts.fetchImpl ?? fetch;
-    const timeoutMs = this.opts.timeoutMs ?? 10_000;
     const url =
       `${this.opts.baseUrl}/quote?inputMint=${req.inputMint.toBase58()}` +
       `&outputMint=${req.outputMint.toBase58()}` +
@@ -118,10 +117,23 @@ export class JupiterV6RouteAdapter implements RouteAdapter {
       `&onlyDirectRoutes=true&maxAccounts=64`;
     const quoteRes = await this.call(fetchImpl, url);
     if (!quoteRes.ok) {
-      if (quoteRes.status === 400) throw new RouteError("no-route", `no route for ${req.inputMint.toBase58()}→${req.outputMint.toBase58()}`, 400);
-      throw new RouteError("endpoint-error", `quote endpoint returned ${quoteRes.status}`, quoteRes.status);
+      if (quoteRes.status === 400)
+        throw new RouteError(
+          "no-route",
+          `no route for ${req.inputMint.toBase58()}→${req.outputMint.toBase58()}`,
+          400,
+        );
+      throw new RouteError(
+        "endpoint-error",
+        `quote endpoint returned ${quoteRes.status}`,
+        quoteRes.status,
+      );
     }
-    const quoteBody = (await quoteRes.json()) as { inAmount?: string; outAmount?: string; slippageBps?: number };
+    const quoteBody = (await quoteRes.json()) as {
+      inAmount?: string;
+      outAmount?: string;
+      slippageBps?: number;
+    };
     if (typeof quoteBody.inAmount !== "string" || typeof quoteBody.outAmount !== "string") {
       throw new RouteError("malformed-response", "quote response missing inAmount/outAmount");
     }
@@ -138,14 +150,24 @@ export class JupiterV6RouteAdapter implements RouteAdapter {
       }),
     });
     if (!swapRes.ok) {
-      throw new RouteError("endpoint-error", `swap endpoint returned ${swapRes.status}`, swapRes.status);
+      throw new RouteError(
+        "endpoint-error",
+        `swap endpoint returned ${swapRes.status}`,
+        swapRes.status,
+      );
     }
     const swapBody = (await swapRes.json()) as {
-      swapInstruction?: { data?: string; accounts?: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }> };
+      swapInstruction?: {
+        data?: string;
+        accounts?: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+      };
     };
     const ix = swapBody.swapInstruction;
     if (!ix || typeof ix.data !== "string" || !Array.isArray(ix.accounts)) {
-      throw new RouteError("malformed-response", "swap response missing swapInstruction.data/accounts");
+      throw new RouteError(
+        "malformed-response",
+        "swap response missing swapInstruction.data/accounts",
+      );
     }
     return {
       inputMint: req.inputMint.toBase58(),
@@ -171,7 +193,8 @@ export class JupiterV6RouteAdapter implements RouteAdapter {
       return await fetchImpl(url, { ...init, signal: ctrl.signal });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("abort")) throw new RouteError("endpoint-unavailable", `route endpoint timed out: ${url}`);
+      if (msg.includes("abort"))
+        throw new RouteError("endpoint-unavailable", `route endpoint timed out: ${url}`);
       throw new RouteError("endpoint-unavailable", `route endpoint unreachable: ${msg}`);
     } finally {
       clearTimeout(timer);

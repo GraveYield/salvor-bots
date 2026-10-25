@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
-import { GraveYieldClient, salvageReceiptPda, vaultAuthorityPda, WSOL_MINT } from "@graveyield/sdk";
+import { salvageReceiptPda, vaultAuthorityPda, WSOL_MINT } from "@graveyield/sdk";
 import {
   ExecutionPipeline,
   LocalAttestationSource,
@@ -39,8 +39,8 @@ import {
 import { FleetMonitor } from "../src/monitor.js";
 import { ConservativeSalvor, CONSERVATIVE_TUNABLES } from "../../conservative/src/bot.js";
 import { SniperSalvor, SNIPER_TUNABLES } from "../../sniper/src/bot.js";
-import { ExperimentalSalvor, EXPERIMENTAL_TUNABLES, DEFAULT_RISK_CAPS } from "../../experimental/src/bot.js";
-import { VAULT_ID, SCANNER_ID, FIXED_NOW_MS, encodeSalvageReceipt } from "../../fleet-core/test/helpers.js";
+import { ExperimentalSalvor, EXPERIMENTAL_TUNABLES } from "../../experimental/src/bot.js";
+import { VAULT_ID, FIXED_NOW_MS, encodeSalvageReceipt } from "../../fleet-core/test/helpers.js";
 import { buildWorld } from "../../fleet-core/test/world.js";
 
 const NOW = () => FIXED_NOW_MS;
@@ -48,7 +48,11 @@ const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
 const AMM = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 
 /** The full fleet harness: shared store, per-bot sinks, one pipeline each. */
-function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: bigint; failFirstSends?: number }) {
+function fleet(opts?: {
+  mode?: "dry-run" | "simulation" | "live";
+  routeOut?: bigint;
+  failFirstSends?: number;
+}) {
   const w = buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
@@ -78,7 +82,15 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
       routeData: Uint8Array.from([1, 2]),
       routeAccounts: [
         { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
-        { pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(new PublicKey(VAULT_ID)), true), isSigner: false, isWritable: true },
+        {
+          pubkey: getAssociatedTokenAddressSync(
+            WSOL_MINT,
+            vaultAuthorityPda(new PublicKey(VAULT_ID)),
+            true,
+          ),
+          isSigner: false,
+          isWritable: true,
+        },
       ],
       quotedAtMs: NOW(),
       adapter: "fake",
@@ -88,7 +100,14 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
   const makePipeline = (botId: string, tunables: Record<string, unknown>) =>
     new ExecutionPipeline({
       client: w.client,
-      policy: { botId, cluster: "localnet", mode: opts?.mode ?? "dry-run", accepts: { kinds: ["certification-ready", "salvageable"] }, retryBackoffMs: 1, ...tunables } as ExecutionPolicy,
+      policy: {
+        botId,
+        cluster: "localnet",
+        mode: opts?.mode ?? "dry-run",
+        accepts: { kinds: ["certification-ready", "salvageable"] },
+        retryBackoffMs: 1,
+        ...tunables,
+      } as ExecutionPolicy,
       liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null,
       routeAdapter: route,
       eventSink: fleetSink,
@@ -97,7 +116,12 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
     });
 
   const conservative = new ConservativeSalvor({
-    config: { cluster: "localnet", mode: opts?.mode ?? "dry-run", liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null, retryBackoffMs: 1 },
+    config: {
+      cluster: "localnet",
+      mode: opts?.mode ?? "dry-run",
+      liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null,
+      retryBackoffMs: 1,
+    },
     client: w.client,
     pipeline: makePipeline("conservative", CONSERVATIVE_TUNABLES),
     store: sharedStore,
@@ -107,7 +131,12 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
     now: NOW,
   });
   const sniper = new SniperSalvor({
-    config: { cluster: "localnet", mode: opts?.mode ?? "dry-run", liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null, retryBackoffMs: 1 },
+    config: {
+      cluster: "localnet",
+      mode: opts?.mode ?? "dry-run",
+      liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null,
+      retryBackoffMs: 1,
+    },
     client: w.client,
     pipeline: makePipeline("sniper", SNIPER_TUNABLES),
     store: sharedStore,
@@ -117,9 +146,19 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
     now: NOW,
   });
   const experimental = new ExperimentalSalvor({
-    config: { cluster: "localnet", mode: opts?.mode ?? "dry-run", liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null, experimentId: "fleet-int-1", retryBackoffMs: 1, riskCaps: { maxPriorityFeeBudgetLamports: 1_000_000_000n } },
+    config: {
+      cluster: "localnet",
+      mode: opts?.mode ?? "dry-run",
+      liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null,
+      experimentId: "fleet-int-1",
+      retryBackoffMs: 1,
+      riskCaps: { maxPriorityFeeBudgetLamports: 1_000_000_000n },
+    },
     client: w.client,
-    pipeline: makePipeline("experimental", { ...EXPERIMENTAL_TUNABLES, frontedRentLamports: undefined }),
+    pipeline: makePipeline("experimental", {
+      ...EXPERIMENTAL_TUNABLES,
+      frontedRentLamports: undefined,
+    }),
     store: sharedStore,
     sink: fleetSink,
     signer: w.salvor,
@@ -128,7 +167,13 @@ function fleet(opts?: { mode?: "dry-run" | "simulation" | "live"; routeOut?: big
   });
   const monitor = new FleetMonitor({
     client: w.client,
-    config: { botId: "monitor", staleAfterMs: 60_000, verificationGraceMs: 30_000, maxAttemptsPerIdentity: 4, now: NOW },
+    config: {
+      botId: "monitor",
+      staleAfterMs: 60_000,
+      verificationGraceMs: 30_000,
+      maxAttemptsPerIdentity: 4,
+      now: NOW,
+    },
     sink: fleetSink,
   });
 
@@ -159,9 +204,21 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
     // (per-bot idempotency), but the shared LEASE means exactly ONE
     // completes a full pass; the other two are lease-denied.
     const outcomes = [c, s, e];
-    assert.equal(outcomes.filter((o) => o.admitted).length, 3, "each bot independently consumes the delivery");
-    assert.equal(outcomes.filter((o) => o.ok).length, 1, "exactly one full pass (lease serialization)");
-    assert.equal(outcomes.filter((o) => o.failureClass === "lease-conflict").length, 2, "the other two are lease-denied");
+    assert.equal(
+      outcomes.filter((o) => o.admitted).length,
+      3,
+      "each bot independently consumes the delivery",
+    );
+    assert.equal(
+      outcomes.filter((o) => o.ok).length,
+      1,
+      "exactly one full pass (lease serialization)",
+    );
+    assert.equal(
+      outcomes.filter((o) => o.failureClass === "lease-conflict").length,
+      2,
+      "the other two are lease-denied",
+    );
     assert.equal(f.w.rpc.sentTransactions.length, 0, "dry-run: nothing submitted");
 
     // The Monitor folds the whole story.
@@ -195,16 +252,28 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
     });
     const out = await f.conservative.processEnvelope(env);
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
-    const prepared = f.fleetSink.where((e) => e.type === "prepared" && e.botId === "conservative" && (e.data as { scannerIxIndex?: number }).scannerIxIndex !== undefined);
+    const prepared = f.fleetSink.where(
+      (e) =>
+        e.type === "prepared" &&
+        e.botId === "conservative" &&
+        (e.data as { scannerIxIndex?: number }).scannerIxIndex !== undefined,
+    );
     const kinds = prepared.map((e) => (e.data as { kind?: string }).kind);
-    assert.ok(kinds.includes("certify-and-salvage"), "the fleet re-certifies atomically instead of trusting the stale envelope");
+    assert.ok(
+      kinds.includes("certify-and-salvage"),
+      "the fleet re-certifies atomically instead of trusting the stale envelope",
+    );
   });
 
   test("failed simulations are terminal per bot but never submitted", async () => {
     const f = fleet();
     // A GraveVault error on every simulation; TWO distinct sightings of
     // the same opportunity fail the same way (repeated failures escalate).
-    f.w.rpc.simulationResult = { err: { InstructionError: [2, { Custom: 7001 }] }, logs: [], unitsConsumed: 10 };
+    f.w.rpc.simulationResult = {
+      err: { InstructionError: [2, { Custom: 7001 }] },
+      logs: [],
+      unitsConsumed: 10,
+    };
     const out = await f.conservative.processEnvelope(f.envelopeFor());
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "simulation-failed");
@@ -223,7 +292,6 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
   test("a transient route failure retries and RECOVERS within the same pass", async () => {
     const f = fleet({ failFirstSends: 0, routeOut: 4_000_000_000n });
     // Sabotage: make the FIRST quote throw, then succeed.
-    let firstQuote = true;
     f.w.rpc.getAccountInfo = new Proxy(f.w.rpc.getAccountInfo.bind(f.w.rpc), {});
     const originalQuote = f.fleetSink; // unused; the route is closed over — inject via sendError? RouteError path is in the adapter.
     void originalQuote;
@@ -281,7 +349,11 @@ describe("fleet integration — live settlement reconciliation", () => {
     assert.ok(first.ok);
     const second = await f.sniper.processEnvelope(env);
     assert.ok(second.admitted, "the sniper admits the delivery into its own stream");
-    assert.match(second.reason ?? "", /already executed by conservative/, "fleet-level at-most-once suppresses the re-execution");
+    assert.match(
+      second.reason ?? "",
+      /already executed by conservative/,
+      "fleet-level at-most-once suppresses the re-execution",
+    );
     assert.equal(f.w.rpc.sentTransactions.length, 1, "exactly one transaction fleet-wide");
   });
 
@@ -291,11 +363,23 @@ describe("fleet integration — live settlement reconciliation", () => {
     await f.conservative.processEnvelope(env);
     // "Restart": fresh bot instances over the same store.
     const conservative2 = new ConservativeSalvor({
-      config: { cluster: "localnet", mode: "live", liveEnablement: { enabled: true, acknowledgedBy: "ops" }, retryBackoffMs: 1 },
+      config: {
+        cluster: "localnet",
+        mode: "live",
+        liveEnablement: { enabled: true, acknowledgedBy: "ops" },
+        retryBackoffMs: 1,
+      },
       client: f.w.client,
       pipeline: new ExecutionPipeline({
         client: f.w.client,
-        policy: { botId: "conservative", cluster: "localnet", mode: "live", accepts: { kinds: ["certification-ready", "salvageable"] }, retryBackoffMs: 1, ...CONSERVATIVE_TUNABLES } as ExecutionPolicy,
+        policy: {
+          botId: "conservative",
+          cluster: "localnet",
+          mode: "live",
+          accepts: { kinds: ["certification-ready", "salvageable"] },
+          retryBackoffMs: 1,
+          ...CONSERVATIVE_TUNABLES,
+        } as ExecutionPolicy,
         liveEnablement: { enabled: true, acknowledgedBy: "ops" },
         routeAdapter: new FakeRouteAdapter(async () => {
           throw new Error("must not be reached");

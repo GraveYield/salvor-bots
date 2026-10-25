@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
-import { GraveYieldClient, WSOL_MINT, vaultAuthorityPda } from "@graveyield/sdk";
+import { WSOL_MINT, vaultAuthorityPda } from "@graveyield/sdk";
 import {
   ExecutionPipeline,
   LocalAttestationSource,
@@ -21,7 +21,7 @@ import {
   type ExecutionPolicy,
 } from "@graveyield/fleet-core";
 import { ConservativeSalvor, CONSERVATIVE_TUNABLES } from "../src/bot.js";
-import { VAULT_ID, FIXED_NOW_MS, SCANNER_ID } from "../../fleet-core/test/helpers.js";
+import { VAULT_ID, FIXED_NOW_MS } from "../../fleet-core/test/helpers.js";
 import { buildWorld } from "../../fleet-core/test/world.js";
 
 const NOW = () => FIXED_NOW_MS;
@@ -53,7 +53,11 @@ function makeBot(opts?: {
     routeAccounts: [
       { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
       {
-        pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(new PublicKey(VAULT_ID)), true),
+        pubkey: getAssociatedTokenAddressSync(
+          WSOL_MINT,
+          vaultAuthorityPda(new PublicKey(VAULT_ID)),
+          true,
+        ),
         isSigner: false,
         isWritable: true,
       },
@@ -72,7 +76,8 @@ function makeBot(opts?: {
       ...CONSERVATIVE_TUNABLES,
       ...(opts?.tunables ?? {}),
       // Applied LAST so the explicit min always wins.
-      minNetProfitLamports: opts?.minNetProfitLamports ?? CONSERVATIVE_TUNABLES.minNetProfitLamports,
+      minNetProfitLamports:
+        opts?.minNetProfitLamports ?? CONSERVATIVE_TUNABLES.minNetProfitLamports,
     } as ExecutionPolicy,
     liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "test" } : null,
     routeAdapter: route,
@@ -86,7 +91,11 @@ function makeBot(opts?: {
       cluster: "localnet",
       mode: opts?.mode ?? "dry-run",
       liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "test" } : null,
-      tunables: { ...(opts?.tunables ?? {}), minNetProfitLamports: opts?.minNetProfitLamports ?? CONSERVATIVE_TUNABLES.minNetProfitLamports },
+      tunables: {
+        ...(opts?.tunables ?? {}),
+        minNetProfitLamports:
+          opts?.minNetProfitLamports ?? CONSERVATIVE_TUNABLES.minNetProfitLamports,
+      },
       retryBackoffMs: 1,
     },
     client: w.client,
@@ -102,7 +111,11 @@ function makeBot(opts?: {
 
 function salvageableEnvelope(w: ReturnType<typeof buildWorld>) {
   return buildEnvelope({
-    identity: { cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() },
+    identity: {
+      cluster: "localnet",
+      ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      poolAddress: w.poolAddress.toBase58(),
+    },
     kind: "salvageable",
     sourceBot: "scout",
     detectedAtMs: FIXED_NOW_MS - 1_000,
@@ -113,7 +126,11 @@ function salvageableEnvelope(w: ReturnType<typeof buildWorld>) {
 
 function certificationReadyEnvelope(w: ReturnType<typeof buildWorld>) {
   return buildEnvelope({
-    identity: { cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() },
+    identity: {
+      cluster: "localnet",
+      ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      poolAddress: w.poolAddress.toBase58(),
+    },
     kind: "certification-ready",
     sourceBot: "scout",
     detectedAtMs: FIXED_NOW_MS - 1_000,
@@ -150,7 +167,11 @@ describe("Conservative — dry-run (default mode)", () => {
         (e.data as { kind?: string }).kind !== undefined &&
         (e.data as { scannerIxIndex?: number }).scannerIxIndex === undefined,
     );
-    assert.equal(prepared.length, 1, "one Conservative-level prepared event (the pipeline's carries scannerIxIndex)");
+    assert.equal(
+      prepared.length,
+      1,
+      "one Conservative-level prepared event (the pipeline's carries scannerIxIndex)",
+    );
     assert.equal((prepared[0]?.data as { kind?: string }).kind, "certify-and-salvage");
     assert.equal(w.rpc.sentTransactions.length, 0);
   });
@@ -166,7 +187,11 @@ describe("Conservative — dry-run (default mode)", () => {
         (e.data as { kind?: string }).kind !== undefined &&
         (e.data as { scannerIxIndex?: number }).scannerIxIndex === undefined,
     );
-    assert.equal((prepared[0]?.data as { kind?: string }).kind, "salvage-only", "live state wins over the envelope's stale kind");
+    assert.equal(
+      (prepared[0]?.data as { kind?: string }).kind,
+      "salvage-only",
+      "live state wins over the envelope's stale kind",
+    );
   });
 
   test("duplicate delivery is suppressed (idempotent consumption)", async () => {
@@ -261,7 +286,11 @@ describe("Conservative — live mode", () => {
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
     assert.ok(out.signature);
     assert.equal(w.rpc.sentTransactions.length, 1);
-    assert.ok(sink.where((e) => e.type === "confirmed").some((e) => (e.data as { signature?: string }).signature === out.signature));
+    assert.ok(
+      sink
+        .where((e) => e.type === "confirmed")
+        .some((e) => (e.data as { signature?: string }).signature === out.signature),
+    );
   });
 
   test("live construction without a signer is refused", async () => {
@@ -270,8 +299,12 @@ describe("Conservative — live mode", () => {
     const pipeline = new P({
       client: w.client,
       policy: {
-        botId: "conservative", cluster: "localnet", mode: "live",
-        accepts: { kinds: ["salvageable"] }, retryBackoffMs: 1, minNetProfitLamports: 0n,
+        botId: "conservative",
+        cluster: "localnet",
+        mode: "live",
+        accepts: { kinds: ["salvageable"] },
+        retryBackoffMs: 1,
+        minNetProfitLamports: 0n,
         ...CONSERVATIVE_TUNABLES,
       } as ExecutionPolicy,
       liveEnablement: { enabled: true, acknowledgedBy: "test" },
@@ -285,7 +318,12 @@ describe("Conservative — live mode", () => {
     assert.throws(
       () =>
         new ConservativeSalvor({
-          config: { cluster: "localnet", mode: "live", liveEnablement: { enabled: true, acknowledgedBy: "test" }, retryBackoffMs: 1 },
+          config: {
+            cluster: "localnet",
+            mode: "live",
+            liveEnablement: { enabled: true, acknowledgedBy: "test" },
+            retryBackoffMs: 1,
+          },
           client: w.client,
           pipeline,
         }),
@@ -299,7 +337,10 @@ describe("Conservative — live mode", () => {
     const out = await bot.processEnvelope(salvageableEnvelope(w));
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "submission-failed");
-    const attemptFailures = sink.where((e) => e.type === "execution-failed" && (e.data as { attempt?: number }).attempt !== undefined);
+    const attemptFailures = sink.where(
+      (e) =>
+        e.type === "execution-failed" && (e.data as { attempt?: number }).attempt !== undefined,
+    );
     assert.equal(attemptFailures.length, 3, "three attempts (maxSubmitAttempts), then terminal");
     assert.equal(w.rpc.sentTransactions.length, 0, "every attempt failed before landing");
   });

@@ -30,7 +30,7 @@ const SEED_LEN = 32;
 const SECRET_KEY_LEN = 64;
 
 /** Decode a base58 string into bytes with a clear error message. */
-function decodeBase58(raw: string, what: string): Uint8Array | null {
+function decodeBase58(raw: string, _what: string): Uint8Array | null {
   try {
     return bs58.decode(raw.trim());
   } catch {
@@ -90,7 +90,9 @@ export function loadSalvorKeypair(raw: string, what = "SALVOR_KEYPAIR"): Keypair
   try {
     parsed = JSON.parse(readFileSync(raw, "utf8")) as unknown;
   } catch (err) {
-    throw new Error(`${what}: not valid base58 key material and could not read as a keypair file (${raw}): ${String(err)}`);
+    throw new Error(
+      `${what}: not valid base58 key material and could not read as a keypair file (${raw}): ${String(err)}`,
+    );
   }
   if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) {
     throw new Error(`${what}: keypair file must contain a JSON array of numbers`);

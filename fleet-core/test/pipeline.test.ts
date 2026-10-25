@@ -12,7 +12,6 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import BN from "bn.js";
 
 import {
-  GraveYieldClient,
   RAYDIUM_V4_PROGRAM_ID,
   WSOL_MINT,
   ED25519_PROGRAM_ID,
@@ -26,11 +25,8 @@ import {
   MemoryEventSink,
   FakeRouteAdapter,
   buildEnvelope,
-  opportunityKey,
-  validatePolicy,
   DEFAULT_TUNABLES,
   type ExecutionPolicy,
-  type PipelineOutcome,
 } from "../src/index.js";
 import { FIXED_NOW_MS, SCANNER_ID, VAULT_ID, encodeSalvageReceipt } from "./helpers.js";
 import { buildWorld } from "./world.js";
@@ -94,7 +90,11 @@ function makePipeline(opts: {
 
 function certificationReadyEnvelope(world: ReturnType<typeof buildWorld>) {
   return buildEnvelope({
-    identity: { cluster: "localnet", ammProgramId: RAYDIUM_V4_PROGRAM_ID.toBase58(), poolAddress: world.poolAddress.toBase58() },
+    identity: {
+      cluster: "localnet",
+      ammProgramId: RAYDIUM_V4_PROGRAM_ID.toBase58(),
+      poolAddress: world.poolAddress.toBase58(),
+    },
     kind: "certification-ready",
     sourceBot: "scout",
     detectedAtMs: FIXED_NOW_MS - 60_000,
@@ -105,7 +105,11 @@ function certificationReadyEnvelope(world: ReturnType<typeof buildWorld>) {
 
 function salvageableEnvelope(world: ReturnType<typeof buildWorld>) {
   return buildEnvelope({
-    identity: { cluster: "localnet", ammProgramId: RAYDIUM_V4_PROGRAM_ID.toBase58(), poolAddress: world.poolAddress.toBase58() },
+    identity: {
+      cluster: "localnet",
+      ammProgramId: RAYDIUM_V4_PROGRAM_ID.toBase58(),
+      poolAddress: world.poolAddress.toBase58(),
+    },
     kind: "salvageable",
     sourceBot: "scout",
     detectedAtMs: FIXED_NOW_MS - 60_000,
@@ -116,7 +120,12 @@ function salvageableEnvelope(world: ReturnType<typeof buildWorld>) {
 
 describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
   test("prepares the atomic [cuLimit, cuPrice, precompile(2), phase2(3), salvage(4)] bundle with the index pinned", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
     const { pipeline } = makePipeline({ world: w });
     const oracle = KeypairShim();
     const out = await pipeline.prepare({
@@ -129,8 +138,14 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
     assert.equal(p.kind, "certify-and-salvage");
     assert.equal(p.tx.instructions.length, 5);
     // Compute-budget ixs first: limit then price.
-    assert.equal(p.tx.instructions[0]!.programId.toBase58(), "ComputeBudget111111111111111111111111111111");
-    assert.equal(p.tx.instructions[1]!.programId.toBase58(), "ComputeBudget111111111111111111111111111111");
+    assert.equal(
+      p.tx.instructions[0]!.programId.toBase58(),
+      "ComputeBudget111111111111111111111111111111",
+    );
+    assert.equal(
+      p.tx.instructions[1]!.programId.toBase58(),
+      "ComputeBudget111111111111111111111111111111",
+    );
     // Precompile at index 2, phase2 at index 3, salvage at index 4.
     assert.equal(p.scannerIxIndex, 3);
     assert.equal(p.tx.instructions[2]!.programId.toBase58(), ED25519_PROGRAM_ID.toBase58());
@@ -148,7 +163,7 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
     assert.ok(
       p.feeMicroLamportsPerCu
         .mul(new BN(p.computeUnitLimit))
-        .lte(new BN((360_000_000n * 25n / 100n * 1_000_000n).toString())),
+        .lte(new BN((((360_000_000n * 25n) / 100n) * 1_000_000n).toString())),
     );
     // Snapshot material is real: 2 holders, supply 10M, salvor LP 1M.
     assert.equal(p.snapshotSummary.holderCount, 2);
@@ -161,23 +176,47 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
   });
 
   test("dry-run NEVER submits: mode gate throws before any send", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const { pipeline } = makePipeline({ world: w });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(out.ok, `prepare failed: ${out.failureClass} ${out.reason}`);
     const signer = w.salvor;
     await assert.rejects(
       () => pipeline.submit({ prepared: out.prepared!, signer }),
       /never submits/,
     );
-    assert.equal(w.rpc.sentTransactions.length, 0, "no transaction may reach the sender in dry-run");
+    assert.equal(
+      w.rpc.sentTransactions.length,
+      0,
+      "no transaction may reach the sender in dry-run",
+    );
   });
 
   test("economic minimum rejects unprofitable opportunities before assembly", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
     // Net profit here is 0.36 SOL minus costs — set the minimum above it.
-    const { pipeline } = makePipeline({ world: w, pol: policy({ minNetProfitLamports: 1_000_000_000n }) });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const { pipeline } = makePipeline({
+      world: w,
+      pol: policy({ minNetProfitLamports: 1_000_000_000n }),
+    });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "economic-insufficient");
   });
@@ -193,7 +232,10 @@ describe("ExecutionPipeline — salvageable path (dry-run)", () => {
       certExpiresAt: NOW_SEC + 3_600n,
     });
     const { pipeline } = makePipeline({ world: w });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(out.ok, out.reason);
     const p = out.prepared!;
     assert.equal(p.kind, "salvage-only");
@@ -209,7 +251,13 @@ describe("ExecutionPipeline — salvageable path (dry-run)", () => {
 
 describe("ExecutionPipeline — safety gates", () => {
   test("stale quote is rejected route-failure", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const staleRoute = new FakeRouteAdapter(async (req) => ({
       inputMint: req.inputMint.toBase58(),
       outputMint: req.outputMint.toBase58(),
@@ -218,20 +266,33 @@ describe("ExecutionPipeline — safety gates", () => {
       slippageBps: req.slippageBps,
       routeData: new Uint8Array(4),
       routeAccounts: [
-        { pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(VAULT_ID), true), isSigner: false, isWritable: true },
+        {
+          pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(VAULT_ID), true),
+          isSigner: false,
+          isWritable: true,
+        },
       ],
       quotedAtMs: NOW() - 60_000, // 60s old > 15s policy window
       adapter: "fake",
     }));
     const { pipeline } = makePipeline({ world: w, route: staleRoute });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "route-failure");
     assert.match(out.reason ?? "", /stale|older/i);
   });
 
   test("missing route accounts (no vault WSOL destination) fail closed", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const emptyRoute = new FakeRouteAdapter(async (req) => ({
       inputMint: req.inputMint.toBase58(),
       outputMint: req.outputMint.toBase58(),
@@ -244,14 +305,23 @@ describe("ExecutionPipeline — safety gates", () => {
       adapter: "fake",
     }));
     const { pipeline } = makePipeline({ world: w, route: emptyRoute });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "route-failure");
     assert.match(out.reason ?? "", /WSOL destination/);
   });
 
   test("LP supply moving after the snapshot fails closed (state-changed, 7018 caught early)", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     // Deterministic race injection: the FIRST getProgramAccounts call is
     // the snapshot enumeration — mutate the LP mint supply right after
     // it so the pipeline's re-pin read (which follows the snapshot)
@@ -272,25 +342,45 @@ describe("ExecutionPipeline — safety gates", () => {
       return out;
     };
     const { pipeline } = makePipeline({ world: w });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "state-changed");
     assert.match(out.reason ?? "", /supply/);
   });
 
   test("salvor without LP fails closed (missing-accounts)", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 0n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 0n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const { pipeline } = makePipeline({ world: w });
-    const out = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "missing-accounts");
     assert.match(out.reason ?? "", /no LP/);
   });
 
   test("certification-ready without an AttestationSource is config-invalid (no silent skip)", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
     const { pipeline } = makePipeline({ world: w });
-    const out = await pipeline.prepare({ envelope: certificationReadyEnvelope(w), salvor: w.salvor.publicKey });
+    const out = await pipeline.prepare({
+      envelope: certificationReadyEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "config-invalid");
     assert.match(out.reason ?? "", /AttestationSource/);
@@ -299,9 +389,18 @@ describe("ExecutionPipeline — safety gates", () => {
 
 describe("ExecutionPipeline — simulation + submission", () => {
   test("simulate passes on a healthy world and carries unitsConsumed", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const { pipeline } = makePipeline({ world: w });
-    const prep = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const prep = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(prep.ok);
     const sim = await pipeline.simulate(prep.prepared!);
     assert.ok(sim.ok);
@@ -309,14 +408,23 @@ describe("ExecutionPipeline — simulation + submission", () => {
   });
 
   test("a failing simulation decodes the GraveYield error and refuses", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     w.rpc.simulationResult = {
       err: { InstructionError: [2, { Custom: 7002 }] }, // EligibilityCertExpired
       logs: ["Program log: expired"],
       unitsConsumed: 100,
     };
     const { pipeline } = makePipeline({ world: w });
-    const prep = await pipeline.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const prep = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(prep.ok, `prepare failed: ${prep.failureClass} ${prep.reason}`);
     const sim = await pipeline.simulate(prep.prepared!);
     assert.equal(sim.ok, false);
@@ -325,7 +433,13 @@ describe("ExecutionPipeline — simulation + submission", () => {
   });
 
   test("live mode submits through the injected sender and reads the salvage receipt", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     // Constructing with mode=live without enablement must throw — the
     // guard itself is under test.
     assert.throws(
@@ -346,7 +460,10 @@ describe("ExecutionPipeline — simulation + submission", () => {
       txSender: w.rpc.fakeSend.bind(w.rpc),
       now: NOW,
     });
-    const prep = await live.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const prep = await live.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(prep.ok);
     const sim = await live.simulate(prep.prepared!);
     assert.ok(sim.ok);
@@ -373,11 +490,20 @@ describe("ExecutionPipeline — simulation + submission", () => {
     assert.equal(sub.receipt?.salvorAmountLamports, 360_000_000n);
     // Settlement sums: 40/40/20 of 0.9 SOL.
     const r = sub.receipt!;
-    assert.equal(r.lpHolderAmountLamports + r.salvorAmountLamports + r.protocolAmountLamports, r.totalProceedsLamports);
+    assert.equal(
+      r.lpHolderAmountLamports + r.salvorAmountLamports + r.protocolAmountLamports,
+      r.totalProceedsLamports,
+    );
   });
 
   test("submitted fee respects the D3 budget (price ix ≤ plan.max × cuLimit)", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n, certExpiresAt: NOW_SEC + 3_600n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
     const live = new ExecutionPipeline({
       client: w.client,
       policy: policy({ mode: "live" }),
@@ -387,7 +513,10 @@ describe("ExecutionPipeline — simulation + submission", () => {
       txSender: w.rpc.fakeSend.bind(w.rpc),
       now: NOW,
     });
-    const prep = await live.prepare({ envelope: salvageableEnvelope(w), salvor: w.salvor.publicKey });
+    const prep = await live.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
     assert.ok(prep.ok);
     const p = prep.prepared!;
     // price × cuLimit ≤ 25% of the 0.36 SOL gross share (in µL).
