@@ -5,6 +5,48 @@ The GraveYield protocol (on-chain programs + monorepo tooling) lives at
 [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
 and has its own changelog.
 
+## [Unreleased — Phase 1 (build + reliability): first CI, TS lint/format enforcement, root-suite gate]
+
+> Phase 1 charter: stabilize build and test workflows without changing
+> protocol economics or weakening security controls. Bot behavior,
+> dry-run defaults, and live-execution gating are untouched — the SDK
+> `src/` changes below are formatting plus dead-import hygiene
+> (byte-mirror of the graveyield-protocol Phase 1 lint/format pass);
+> all other source changes are dead-code/import hygiene caught by the
+> new lint gate.
+
+### Added
+
+- **First CI workflow** (`.github/workflows/ci.yml`): frozen-lockfile
+  install, root + workspace builds, root + workspace typechecks, eslint,
+  prettier check, and the full 354-test suite (root SDK mirror 116 +
+  workspace packages 238). The root project is excluded from bare
+  `pnpm -r` ("Scope: 7 of 8" — verified), so every root-level gate runs
+  explicitly with `-w`; a naive `pnpm -r test` CI would have silently
+  skipped 116 of 354 tests.
+- **ESLint + Prettier** with exact-pinned versions identical to
+  graveyield-protocol (`eslint@10.13.0`, `typescript-eslint@8.72.0`,
+  `eslint-config-prettier@10.1.8`, `prettier@3.9.10`) and the same rule
+  tunings — required because `src/` is a byte-equal vendored mirror of
+  `graveyield-protocol/sdk/src` (enforced by protocol CI's sdk-sync job)
+  and must lint/format identically. `packageManager: pnpm@9.12.0` +
+  `.nvmrc` (node 24) added; root scripts `lint`, `fmt:ts`, `fmt:ts:check`.
+
+### Fixed
+
+- **31 lint violations across 18 files** — all mechanical, zero behavior
+  change; full suite re-verified green (354/354): unused imports/locals
+  removed (bot tests, fleet-core, monitor, scout), `let`→`const` (fleet-ops
+  tests), stale `eslint-disable` directives dropped (scout), dead locals
+  deleted (`route.ts` timeout local — the real timeout lives in
+  `call()`; abandoned `firstQuote` sabotage line in the fleet integration
+  test; `opts_currentEpoch` test helper), unused `parseArgs` call removed
+  from the CLI, `_what` rename for the intentionally-unused
+  `decodeBase58` label param.
+- **`src/` mirror refreshed** from `graveyield-protocol/sdk/src` after
+  the protocol-side Phase 1 lint/format pass (byte-equality re-verified
+  with `diff -r`; prettier + eslint report zero findings on the mirror).
+
 ## [Unreleased — Phase 12 (security + economic testnet): the fleet under attack — admission-gate matrix, competing-Salvor coordination, extreme-value economics, mid-flight state manipulation]
 
 > Roadmap Phase 12, verbatim goal: "Prove that GraveYield refuses to
