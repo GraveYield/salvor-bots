@@ -31,7 +31,12 @@ const REQ = {
 
 describe("FakeRouteAdapter", () => {
   test("returns the canned route and records the call", async () => {
-    const quote = fakeRouteQuote({ inputMint: MEME.toBase58(), outputMint: WSOL.toBase58(), inAmount: 1_000_000n, outAmount: 4_000_000_000n });
+    const quote = fakeRouteQuote({
+      inputMint: MEME.toBase58(),
+      outputMint: WSOL.toBase58(),
+      inAmount: 1_000_000n,
+      outAmount: 4_000_000_000n,
+    });
     const adapter = new FakeRouteAdapter(async () => quote);
     const out = await adapter.quote(REQ);
     assert.equal(out.outAmount, 4_000_000_000n);
@@ -80,7 +85,10 @@ describe("JupiterV6RouteAdapter (mocked fetch)", () => {
       { ok: true, status: 200, json: quoteBody },
       { ok: true, status: 200, json: swapBody },
     ]);
-    const adapter = new JupiterV6RouteAdapter({ baseUrl: "https://fake.jup", fetchImpl: impl as typeof fetch });
+    const adapter = new JupiterV6RouteAdapter({
+      baseUrl: "https://fake.jup",
+      fetchImpl: impl as typeof fetch,
+    });
     const q = await adapter.quote(REQ);
     assert.equal(q.inAmount, 1_000_000n);
     assert.equal(q.outAmount, 4_000_000_000n);
@@ -91,12 +99,24 @@ describe("JupiterV6RouteAdapter (mocked fetch)", () => {
 
   test("quote 400 → RouteError(no-route); endpoint 500 → RouteError(endpoint-error)", async () => {
     const bad400 = mockFetch([{ ok: false, status: 400, json: {} }]);
-    const a400 = new JupiterV6RouteAdapter({ baseUrl: "https://fake.jup", fetchImpl: bad400.impl as typeof fetch });
-    await assert.rejects(() => a400.quote(REQ), (err: unknown) => err instanceof RouteError && err.reason === "no-route");
+    const a400 = new JupiterV6RouteAdapter({
+      baseUrl: "https://fake.jup",
+      fetchImpl: bad400.impl as typeof fetch,
+    });
+    await assert.rejects(
+      () => a400.quote(REQ),
+      (err: unknown) => err instanceof RouteError && err.reason === "no-route",
+    );
 
     const bad500 = mockFetch([{ ok: false, status: 500, json: {} }]);
-    const a500 = new JupiterV6RouteAdapter({ baseUrl: "https://fake.jup", fetchImpl: bad500.impl as typeof fetch });
-    await assert.rejects(() => a500.quote(REQ), (err: unknown) => err instanceof RouteError && err.reason === "endpoint-error");
+    const a500 = new JupiterV6RouteAdapter({
+      baseUrl: "https://fake.jup",
+      fetchImpl: bad500.impl as typeof fetch,
+    });
+    await assert.rejects(
+      () => a500.quote(REQ),
+      (err: unknown) => err instanceof RouteError && err.reason === "endpoint-error",
+    );
   });
 
   test("malformed swap response (missing swapInstruction) → malformed-response", async () => {
@@ -104,16 +124,28 @@ describe("JupiterV6RouteAdapter (mocked fetch)", () => {
       { ok: true, status: 200, json: quoteBody },
       { ok: true, status: 200, json: {} },
     ]);
-    const adapter = new JupiterV6RouteAdapter({ baseUrl: "https://fake.jup", fetchImpl: impl as typeof fetch });
-    await assert.rejects(() => adapter.quote(REQ), (err: unknown) => err instanceof RouteError && err.reason === "malformed-response");
+    const adapter = new JupiterV6RouteAdapter({
+      baseUrl: "https://fake.jup",
+      fetchImpl: impl as typeof fetch,
+    });
+    await assert.rejects(
+      () => adapter.quote(REQ),
+      (err: unknown) => err instanceof RouteError && err.reason === "malformed-response",
+    );
   });
 
   test("network failure → endpoint-unavailable", async () => {
     const impl = async (): Promise<Response> => {
       throw new Error("ECONNREFUSED");
     };
-    const adapter = new JupiterV6RouteAdapter({ baseUrl: "https://fake.jup", fetchImpl: impl as unknown as typeof fetch });
-    await assert.rejects(() => adapter.quote(REQ), (err: unknown) => err instanceof RouteError && err.reason === "endpoint-unavailable");
+    const adapter = new JupiterV6RouteAdapter({
+      baseUrl: "https://fake.jup",
+      fetchImpl: impl as unknown as typeof fetch,
+    });
+    await assert.rejects(
+      () => adapter.quote(REQ),
+      (err: unknown) => err instanceof RouteError && err.reason === "endpoint-unavailable",
+    );
   });
 });
 
@@ -130,16 +162,43 @@ describe("validateRouteForSalvage", () => {
   });
 
   test("a good route passes", () => {
-    assert.equal(validateRouteForSalvage(GOOD, { inputMint: MEME, outputMint: WSOL, expectedOutLamports: 3_880_000_000n, vaultAuthority: VAULT_AUTH, vaultWsolAta: VAULT_WSOL_ATA }), null);
+    assert.equal(
+      validateRouteForSalvage(GOOD, {
+        inputMint: MEME,
+        outputMint: WSOL,
+        expectedOutLamports: 3_880_000_000n,
+        vaultAuthority: VAULT_AUTH,
+        vaultWsolAta: VAULT_WSOL_ATA,
+      }),
+      null,
+    );
   });
 
   test("wrong input mint is rejected", () => {
     const wrong = fakeRouteQuote({ ...GOOD, inputMint: WSOL.toBase58() });
-    assert.match(validateRouteForSalvage(wrong, { inputMint: MEME, outputMint: WSOL, expectedOutLamports: 1n, vaultAuthority: VAULT_AUTH, vaultWsolAta: VAULT_WSOL_ATA }) ?? "", /input mint/);
+    assert.match(
+      validateRouteForSalvage(wrong, {
+        inputMint: MEME,
+        outputMint: WSOL,
+        expectedOutLamports: 1n,
+        vaultAuthority: VAULT_AUTH,
+        vaultWsolAta: VAULT_WSOL_ATA,
+      }) ?? "",
+      /input mint/,
+    );
   });
 
   test("quote below the estimator's floor is rejected", () => {
-    assert.match(validateRouteForSalvage(GOOD, { inputMint: MEME, outputMint: WSOL, expectedOutLamports: 4_000_000_001n, vaultAuthority: VAULT_AUTH, vaultWsolAta: VAULT_WSOL_ATA }) ?? "", /below the estimator's floor/);
+    assert.match(
+      validateRouteForSalvage(GOOD, {
+        inputMint: MEME,
+        outputMint: WSOL,
+        expectedOutLamports: 4_000_000_001n,
+        vaultAuthority: VAULT_AUTH,
+        vaultWsolAta: VAULT_WSOL_ATA,
+      }) ?? "",
+      /below the estimator's floor/,
+    );
   });
 
   test("a route that never touches the vault WSOL destination is rejected", () => {
@@ -147,6 +206,15 @@ describe("validateRouteForSalvage", () => {
       ...GOOD,
       routeAccounts: [{ pubkey: VAULT_AUTH, isSigner: false, isWritable: true }],
     });
-    assert.match(validateRouteForSalvage(missing, { inputMint: MEME, outputMint: WSOL, expectedOutLamports: 1n, vaultAuthority: VAULT_AUTH, vaultWsolAta: VAULT_WSOL_ATA }) ?? "", /WSOL destination/);
+    assert.match(
+      validateRouteForSalvage(missing, {
+        inputMint: MEME,
+        outputMint: WSOL,
+        expectedOutLamports: 1n,
+        vaultAuthority: VAULT_AUTH,
+        vaultWsolAta: VAULT_WSOL_ATA,
+      }) ?? "",
+      /WSOL destination/,
+    );
   });
 });

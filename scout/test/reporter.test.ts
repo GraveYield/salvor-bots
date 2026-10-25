@@ -53,11 +53,17 @@ describe("JsonlFileReportSink", () => {
     try {
       const sink = new JsonlFileReportSink(file);
       sink.emit(makeEvent("cycle-start"));
-      sink.emit(makeEvent("opportunity:certification-ready", "PoolX", { firstEligibleEpoch: "10" }));
+      sink.emit(
+        makeEvent("opportunity:certification-ready", "PoolX", { firstEligibleEpoch: "10" }),
+      );
 
       const lines = readFileSync(file, "utf8").trim().split("\n");
       assert.equal(lines.length, 2);
-      const parsed = JSON.parse(lines[1] as string) as { type: string; pool?: string; data?: Record<string, unknown> };
+      const parsed = JSON.parse(lines[1] as string) as {
+        type: string;
+        pool?: string;
+        data?: Record<string, unknown>;
+      };
       assert.equal(parsed.type, "opportunity:certification-ready");
       assert.equal(parsed.pool, "PoolX");
       assert.equal(parsed.data?.firstEligibleEpoch, "10");

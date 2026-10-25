@@ -54,7 +54,7 @@ export class MemoryReportSink implements ReportSink {
 export class ConsoleReportSink implements ReportSink {
   emit(event: ScoutEvent): void {
     // Structured single-line JSON keeps `| jq` / log shippers simple.
-    // eslint-disable-next-line no-console
+
     console.log(JSON.stringify(event));
   }
 }

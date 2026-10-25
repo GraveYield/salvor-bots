@@ -164,7 +164,10 @@ export function estimateSalvageEconomics(opts: {
     return reject("economic-unresolvable", "salvor LP exceeds live supply — inconsistent state");
   }
   if (config.salvorShareBps <= 0) {
-    return reject("economic-unresolvable", "salvor share is 0 bps — nothing to keep, never salvageable");
+    return reject(
+      "economic-unresolvable",
+      "salvor share is 0 bps — nothing to keep, never salvageable",
+    );
   }
   if (opts.minNetProfitLamports < 0n) {
     throw new RangeError("minNetProfitLamports must be non-negative");

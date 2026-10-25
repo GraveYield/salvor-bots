@@ -16,7 +16,6 @@ async function main(): Promise<void> {
   const config = loadScoutConfig();
   const scout = buildScout(config);
 
-  // eslint-disable-next-line no-console
   console.log(
     JSON.stringify({
       tsMs: Date.now(),
@@ -49,12 +48,16 @@ const isDirectRun =
 
 if (isDirectRun) {
   process.on("SIGINT", () => {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ tsMs: Date.now(), type: "info", data: { message: "SIGINT — stopping after current cycle" } }));
+    console.log(
+      JSON.stringify({
+        tsMs: Date.now(),
+        type: "info",
+        data: { message: "SIGINT — stopping after current cycle" },
+      }),
+    );
     process.exit(0);
   });
   main().catch((err) => {
-    // eslint-disable-next-line no-console
     console.error(err);
     process.exit(1);
   });

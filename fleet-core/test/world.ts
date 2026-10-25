@@ -97,15 +97,45 @@ export function buildWorld(opts: WorldOptions): World {
   // Pool + vaults + LP mint.
   rpc.setAccount(
     poolAddress,
-    encodeAmmInfo({ coinVault, pcVault, baseMint: coinMint, quoteMint: pcMint, lpMint, openOrders, market, marketProgram: MARKET_PROGRAM, targetOrders }),
+    encodeAmmInfo({
+      coinVault,
+      pcVault,
+      baseMint: coinMint,
+      quoteMint: pcMint,
+      lpMint,
+      openOrders,
+      market,
+      marketProgram: MARKET_PROGRAM,
+      targetOrders,
+    }),
     RAYDIUM_V4(),
   );
-  rpc.setAccount(coinVault, encodeTokenAccount(coinMint, opts.coinIsWsol ? opts.wsolReserve : opts.memecoinReserve), TOKEN_PROGRAM);
-  rpc.setAccount(pcVault, encodeTokenAccount(pcMint, opts.coinIsWsol ? opts.memecoinReserve : opts.wsolReserve), TOKEN_PROGRAM);
+  rpc.setAccount(
+    coinVault,
+    encodeTokenAccount(coinMint, opts.coinIsWsol ? opts.wsolReserve : opts.memecoinReserve),
+    TOKEN_PROGRAM,
+  );
+  rpc.setAccount(
+    pcVault,
+    encodeTokenAccount(pcMint, opts.coinIsWsol ? opts.memecoinReserve : opts.wsolReserve),
+    TOKEN_PROGRAM,
+  );
   rpc.setAccount(lpMint, encodeMint(opts.lpSupply), TOKEN_PROGRAM);
 
   // Market + side accounts (owner programs are validated by the derivation).
-  rpc.setAccount(market, encodeMarketState({ coinMint, pcMint, coinVault: marketCoinVault, pcVault: marketPcVault, eventQ, bids, asks }), MARKET_PROGRAM);
+  rpc.setAccount(
+    market,
+    encodeMarketState({
+      coinMint,
+      pcMint,
+      coinVault: marketCoinVault,
+      pcVault: marketPcVault,
+      eventQ,
+      bids,
+      asks,
+    }),
+    MARKET_PROGRAM,
+  );
   // The market vault signer PDA (what the serum vaults' owner field must hold).
   const [marketVaultSigner] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault-signer"), market.toBytes()],
@@ -124,7 +154,11 @@ export function buildWorld(opts: WorldOptions): World {
     } else if (what === "marketCoinVault" || what === "marketPcVault") {
       // Serum vaults are token accounts whose OWNER is the vault signer.
       const mint = what === "marketCoinVault" ? coinMint : pcMint;
-      rpc.setAccount(addr, encodeTokenAccountWithOwner(mint, marketVaultSigner, 1_000n), TOKEN_PROGRAM);
+      rpc.setAccount(
+        addr,
+        encodeTokenAccountWithOwner(mint, marketVaultSigner, 1_000n),
+        TOKEN_PROGRAM,
+      );
     } else {
       rpc.setAccount(addr, new Uint8Array(72), MARKET_PROGRAM); // eventQ/bids/asks (not parsed)
     }
@@ -140,14 +174,24 @@ export function buildWorld(opts: WorldOptions): World {
   const anchorPda = eligibilityAnchorPda(SCANNER_ID, RAYDIUM_V4(), poolAddress);
   rpc.setAccount(
     anchorPda,
-    encodeAnchor({ ammProgramId: RAYDIUM_V4(), poolAddress, firstEligibleEpoch, invalidated: opts.invalidatedAnchor ?? false }),
+    encodeAnchor({
+      ammProgramId: RAYDIUM_V4(),
+      poolAddress,
+      firstEligibleEpoch,
+      invalidated: opts.invalidatedAnchor ?? false,
+    }),
     SCANNER_ID,
   );
   const certPda = eligibilityCertPda(SCANNER_ID, RAYDIUM_V4(), poolAddress);
   if (opts.certExpiresAt !== undefined && opts.certExpiresAt !== null) {
     rpc.setAccount(
       certPda,
-      encodeCert({ ammProgramId: RAYDIUM_V4(), poolAddress, anchorEpoch: firstEligibleEpoch, expiresAt: opts.certExpiresAt }),
+      encodeCert({
+        ammProgramId: RAYDIUM_V4(),
+        poolAddress,
+        anchorEpoch: firstEligibleEpoch,
+        expiresAt: opts.certExpiresAt,
+      }),
       SCANNER_ID,
     );
   }
@@ -168,7 +212,12 @@ export function buildWorld(opts: WorldOptions): World {
   }
 
   // Swap history 100 days back (C1 satisfied at the SDK level).
-  rpc.setSwapHistory(poolAddress, RAYDIUM_V4(), { coinVault, pcVault }, { lastSwapAgeSeconds: 100 * 86_400 });
+  rpc.setSwapHistory(
+    poolAddress,
+    RAYDIUM_V4(),
+    { coinVault, pcVault },
+    { lastSwapAgeSeconds: 100 * 86_400 },
+  );
 
   const client = new GraveYieldClient({
     connection: rpc.asConnection(),
@@ -206,7 +255,11 @@ export type { BN };
 export { AUTHORITY, FIXED_NOW_MS };
 
 /** Token account with a real owner field (snapshot aggregation needs it). */
-function encodeTokenAccountWithOwner(mint: PublicKey, owner: PublicKey, amount: bigint): Uint8Array {
+function encodeTokenAccountWithOwner(
+  mint: PublicKey,
+  owner: PublicKey,
+  amount: bigint,
+): Uint8Array {
   const buf = new Uint8Array(165);
   buf.set(mint.toBytes(), 0);
   buf.set(owner.toBytes(), 32);

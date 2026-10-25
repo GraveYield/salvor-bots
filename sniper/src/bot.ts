@@ -26,7 +26,12 @@
 // does not define it more specifically (recorded gap, FLEET-M4).
 
 import { Keypair } from "@solana/web3.js";
-import { GraveYieldClient, DEVNET_SCANNER_PROGRAM_ID, DEVNET_VAULT_PROGRAM_ID, type Cluster } from "@graveyield/sdk";
+import {
+  GraveYieldClient,
+  DEVNET_SCANNER_PROGRAM_ID,
+  DEVNET_VAULT_PROGRAM_ID,
+  type Cluster,
+} from "@graveyield/sdk";
 import {
   DEFAULT_TUNABLES,
   StrategyExecutor,

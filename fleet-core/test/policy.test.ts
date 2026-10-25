@@ -7,12 +7,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import BN from "bn.js";
 
-import {
-  validatePolicy,
-  planFees,
-  DEFAULT_TUNABLES,
-  type ExecutionPolicy,
-} from "../src/index.js";
+import { validatePolicy, planFees, DEFAULT_TUNABLES, type ExecutionPolicy } from "../src/index.js";
 
 function basePolicy(overrides?: Partial<ExecutionPolicy>): ExecutionPolicy {
   return {
@@ -34,21 +29,53 @@ describe("validatePolicy", () => {
   });
 
   test("live mode WITHOUT explicit enablement is rejected — never defaults to live", () => {
-    assert.throws(() => validatePolicy(basePolicy({ mode: "live" }), null), /explicit operator enablement/);
-    assert.throws(() => validatePolicy(basePolicy({ mode: "live" }), { enabled: false, acknowledgedBy: "op" }), /explicit operator enablement/);
-    assert.doesNotThrow(() => validatePolicy(basePolicy({ mode: "live" }), { enabled: true, acknowledgedBy: "operator@host" }));
+    assert.throws(
+      () => validatePolicy(basePolicy({ mode: "live" }), null),
+      /explicit operator enablement/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ mode: "live" }), { enabled: false, acknowledgedBy: "op" }),
+      /explicit operator enablement/,
+    );
+    assert.doesNotThrow(() =>
+      validatePolicy(basePolicy({ mode: "live" }), {
+        enabled: true,
+        acknowledgedBy: "operator@host",
+      }),
+    );
   });
 
   test("global invariants: margins, units, minimums, windows", () => {
     assert.throws(() => validatePolicy(basePolicy({ botId: "" }), null), /botId/);
-    assert.throws(() => validatePolicy(basePolicy({ computeUnitLimit: 0 }), null), /computeUnitLimit/);
-    assert.throws(() => validatePolicy(basePolicy({ computeUnitLimit: 1.5 }), null), /computeUnitLimit/);
-    assert.throws(() => validatePolicy(basePolicy({ feeMarginRatio: 1.2 }), null), /feeMarginRatio/);
-    assert.throws(() => validatePolicy(basePolicy({ minNetProfitLamports: -1n }), null), /minNetProfitLamports/);
-    assert.throws(() => validatePolicy(basePolicy({ maxSubmitAttempts: 0 }), null), /maxSubmitAttempts/);
+    assert.throws(
+      () => validatePolicy(basePolicy({ computeUnitLimit: 0 }), null),
+      /computeUnitLimit/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ computeUnitLimit: 1.5 }), null),
+      /computeUnitLimit/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ feeMarginRatio: 1.2 }), null),
+      /feeMarginRatio/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ minNetProfitLamports: -1n }), null),
+      /minNetProfitLamports/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ maxSubmitAttempts: 0 }), null),
+      /maxSubmitAttempts/,
+    );
     assert.throws(() => validatePolicy(basePolicy({ leaseTtlMs: 10 }), null), /leaseTtlMs/);
-    assert.throws(() => validatePolicy(basePolicy({ slippageBpsOverride: 20_000 }), null), /slippageBpsOverride/);
-    assert.throws(() => validatePolicy(basePolicy({ accepts: { kinds: [] } }), null), /accepts.kinds/);
+    assert.throws(
+      () => validatePolicy(basePolicy({ slippageBpsOverride: 20_000 }), null),
+      /slippageBpsOverride/,
+    );
+    assert.throws(
+      () => validatePolicy(basePolicy({ accepts: { kinds: [] } }), null),
+      /accepts.kinds/,
+    );
   });
 });
 

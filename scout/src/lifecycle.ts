@@ -22,10 +22,7 @@
 // downstream execution bots under the shared execution policy.
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import {
-  fetchEligibilityAnchor,
-  fetchEligibilityCert,
-} from "@graveyield/sdk";
+import { fetchEligibilityAnchor, fetchEligibilityCert } from "@graveyield/sdk";
 
 import type { CandidateLifecycleState, ScoutOpportunity, TrackedCandidate } from "./types.js";
 
@@ -89,7 +86,11 @@ export async function monitorCandidate(opts: {
   }
 
   if (anchor.invalidated) {
-    return { ...base, state: "anchor-invalidated", note: "anchor invalidated by protocol authority" };
+    return {
+      ...base,
+      state: "anchor-invalidated",
+      note: "anchor invalidated by protocol authority",
+    };
   }
 
   // A cert dominates the anchor state (it is the phase-2 product).
@@ -175,7 +176,11 @@ export class CandidateTracker {
   }
 
   /** Move a pool to a new lifecycle state (history is appended). */
-  transition(poolAddress: PublicKey, nextState: CandidateLifecycleState, note?: string): TrackedCandidate | undefined {
+  transition(
+    poolAddress: PublicKey,
+    nextState: CandidateLifecycleState,
+    note?: string,
+  ): TrackedCandidate | undefined {
     const record = this.records.get(poolAddress.toBase58());
     if (!record) return undefined;
     record.state = nextState;

@@ -39,7 +39,9 @@ interface Harness {
 function harness(): Harness {
   const health = new HealthRegistry("test", () => Date.now());
   const alertLog: Alert[] = [];
-  const alerts = new AlertManager({ deliver: (a) => alertLog.push(a) }, 30 * 60 * 1000, () => Date.now());
+  const alerts = new AlertManager({ deliver: (a) => alertLog.push(a) }, 30 * 60 * 1000, () =>
+    Date.now(),
+  );
 
   const h: Harness = {
     runner: undefined as unknown as FleetRunner,
@@ -79,14 +81,27 @@ function harness(): Harness {
   return h;
 }
 
-function diagnostic(code: MonitorDiagnostic["code"], severity: MonitorDiagnostic["severity"]): MonitorDiagnostic {
-  return { tsMs: 1, severity, identityKey: "devnet|raydium-v4|pool", code, detail: { attempts: 2n } };
+function diagnostic(
+  code: MonitorDiagnostic["code"],
+  severity: MonitorDiagnostic["severity"],
+): MonitorDiagnostic {
+  return {
+    tsMs: 1,
+    severity,
+    identityKey: "devnet|raydium-v4|pool",
+    code,
+    detail: { attempts: 2n },
+  };
 }
 
 describe("FleetRunner — Scout cycles", () => {
   test("a healthy cycle heartbeats ok and bumps the counters", async () => {
     const h = harness();
-    h.scoutResult.value = cycleResult({ discoveredCount: 250, candidateCount: 7, phase1Submitted: 2 });
+    h.scoutResult.value = cycleResult({
+      discoveredCount: 250,
+      candidateCount: 7,
+      phase1Submitted: 2,
+    });
     await h.runner.runScoutCycle();
     const snap = h.health.snapshot();
     const scout = snap.components.find((c) => c.name === "scout");
@@ -124,7 +139,10 @@ describe("FleetRunner — Scout cycles", () => {
 describe("FleetRunner — Monitor sweeps", () => {
   test("info diagnostics are counted, never alerted", () => {
     const h = harness();
-    h.diagnostics.value = [diagnostic("receipt-verified", "info"), diagnostic("reconciled", "info")];
+    h.diagnostics.value = [
+      diagnostic("receipt-verified", "info"),
+      diagnostic("reconciled", "info"),
+    ];
     const out = h.runner.runMonitorSweep();
     assert.equal(out.length, 2);
     assert.equal(h.alertLog.length, 0);
@@ -138,8 +156,12 @@ describe("FleetRunner — Monitor sweeps", () => {
       diagnostic("conflicting-claims", "critical"),
     ];
     h.runner.runMonitorSweep();
-    assert.ok(h.alertLog.some((a) => a.code === "monitor-stale-opportunity" && a.severity === "warn"));
-    assert.ok(h.alertLog.some((a) => a.code === "monitor-conflicting-claims" && a.severity === "critical"));
+    assert.ok(
+      h.alertLog.some((a) => a.code === "monitor-stale-opportunity" && a.severity === "warn"),
+    );
+    assert.ok(
+      h.alertLog.some((a) => a.code === "monitor-conflicting-claims" && a.severity === "critical"),
+    );
     const monitor = h.health.snapshot().components.find((c) => c.name === "monitor");
     assert.ok(monitor);
     assert.equal(monitor.status, "degraded");

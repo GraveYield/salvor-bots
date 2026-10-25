@@ -192,9 +192,7 @@ export class ScoutSalvor {
     // Effective mode: dry-run wins, and submission mode additionally
     // requires both keys (belt and braces — config already validates).
     const canSubmit =
-      !this.opts.dryRun &&
-      this.opts.activityOracle !== null &&
-      this.opts.operatorKeypair !== null;
+      !this.opts.dryRun && this.opts.activityOracle !== null && this.opts.operatorKeypair !== null;
 
     this.emit("cycle-start", undefined, { dryRun: !canSubmit });
 
@@ -229,9 +227,21 @@ export class ScoutSalvor {
       discoveredCount++;
       const record = this.tracker.ensure(pool.poolAddress, pool.ammProgramId);
       // Pin the canonical PDAs (the tracker's ensure() only sets placeholders).
-      record.anchorPda = eligibilityAnchorPda(this.opts.scannerProgramId, pool.ammProgramId, pool.poolAddress);
-      record.certPda = eligibilityCertPda(this.opts.scannerProgramId, pool.ammProgramId, pool.poolAddress);
-      record.launchPricePda = launchPricePda(this.opts.scannerProgramId, pool.ammProgramId, pool.poolAddress);
+      record.anchorPda = eligibilityAnchorPda(
+        this.opts.scannerProgramId,
+        pool.ammProgramId,
+        pool.poolAddress,
+      );
+      record.certPda = eligibilityCertPda(
+        this.opts.scannerProgramId,
+        pool.ammProgramId,
+        pool.poolAddress,
+      );
+      record.launchPricePda = launchPricePda(
+        this.opts.scannerProgramId,
+        pool.ammProgramId,
+        pool.poolAddress,
+      );
       if (record.state === "discovered") {
         this.emit("discovered", pool.poolAddress.toBase58());
       }
@@ -351,11 +361,7 @@ export class ScoutSalvor {
             );
           }
         } else if (record.state !== "evaluated-ineligible") {
-          this.tracker.transition(
-            poolAddress,
-            "evaluated-ineligible",
-            verdict.reason ?? undefined,
-          );
+          this.tracker.transition(poolAddress, "evaluated-ineligible", verdict.reason ?? undefined);
         }
         continue;
       }
@@ -428,7 +434,11 @@ export class ScoutSalvor {
           const message = String((err as { message?: string }).message ?? err);
           record.submitAttempts += 1;
           record.lastError = message;
-          this.tracker.transition(poolAddress, "submission-failed", `record_launch_price: ${message}`);
+          this.tracker.transition(
+            poolAddress,
+            "submission-failed",
+            `record_launch_price: ${message}`,
+          );
           this.emit("phase1-failed", poolAddress.toBase58(), {
             stage: "record-launch-price",
             message,

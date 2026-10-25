@@ -11,11 +11,7 @@
 // Additional sources land in Phase 15 (CLMM, Orca, PumpSwap, Meteora).
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import {
-  RAYDIUM_V4_PROGRAM_ID,
-  RAYDIUM_V4_AMM_INFO_SIZE,
-  parseV4AmmInfo,
-} from "@graveyield/sdk";
+import { RAYDIUM_V4_PROGRAM_ID, RAYDIUM_V4_AMM_INFO_SIZE, parseV4AmmInfo } from "@graveyield/sdk";
 
 /** A pool discovered by a Scout source. */
 export interface DiscoveredPool {

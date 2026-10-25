@@ -102,8 +102,7 @@ export function classifyEvaluation(
     hardFailures.push("no-attestable-last-swap");
   }
 
-  const monitorOnly =
-    hardFailures.length === 0 && (check.anchorExists || check.certExists);
+  const monitorOnly = hardFailures.length === 0 && (check.anchorExists || check.certExists);
 
   let reason: string | null = null;
   if (hardFailures.length > 0) {

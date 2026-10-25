@@ -8,7 +8,11 @@
 // emitting bot id + the opportunity identity key so events can be
 // attributed and replayed.
 
-import { opportunityKey, type FleetOpportunityIdentity, type OpportunityEnvelope } from "./envelope.js";
+import {
+  opportunityKey,
+  type FleetOpportunityIdentity,
+  type OpportunityEnvelope,
+} from "./envelope.js";
 import type { ExecutionState } from "./lifecycle.js";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -209,7 +213,10 @@ export class FanoutEventSink implements FleetEventSink {
 
 /** Console sink for operators (pretty by default, `--json` for machines). */
 export class ConsoleEventSink implements FleetEventSink {
-  constructor(private readonly json = false, private readonly out: (line: string) => void = console.log) {}
+  constructor(
+    private readonly json = false,
+    private readonly out: (line: string) => void = console.log,
+  ) {}
   emit(event: FleetEvent): void {
     if (this.json) {
       this.out(JSON.stringify(event));

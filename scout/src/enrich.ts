@@ -124,7 +124,13 @@ export interface ReserveRecord {
 export async function readReserves(
   connection: Connection,
   poolAddress: PublicKey,
-  pool: { coinVault: PublicKey; pcVault: PublicKey; baseMint: PublicKey; quoteMint: PublicKey; lpMint: PublicKey },
+  pool: {
+    coinVault: PublicKey;
+    pcVault: PublicKey;
+    baseMint: PublicKey;
+    quoteMint: PublicKey;
+    lpMint: PublicKey;
+  },
 ): Promise<ReserveRecord | null> {
   try {
     const coinReserve = await readVaultReserve(connection, pool.coinVault);

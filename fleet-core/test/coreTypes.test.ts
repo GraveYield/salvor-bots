@@ -38,7 +38,12 @@ describe("opportunity identity", () => {
   });
 
   test("delivery id is content-bound: same inputs → same id, any change → new id", () => {
-    const base = { identity: IDENTITY, kind: "salvageable" as const, sourceBot: "scout", detectedAtMs: 1000 };
+    const base = {
+      identity: IDENTITY,
+      kind: "salvageable" as const,
+      sourceBot: "scout",
+      detectedAtMs: 1000,
+    };
     const a = deliveryIdOf(base);
     const b = deliveryIdOf(base);
     assert.equal(a, b);
@@ -46,7 +51,15 @@ describe("opportunity identity", () => {
     assert.notEqual(a, deliveryIdOf({ ...base, kind: "certification-ready" }));
     assert.notEqual(a, deliveryIdOf({ ...base, detectedAtMs: 1001 }));
     assert.notEqual(a, deliveryIdOf({ ...base, sourceBot: "other" }));
-    assert.notEqual(a, deliveryIdOf({ identity: { ...IDENTITY, poolAddress: "OTHER" }, kind: "salvageable", sourceBot: "scout", detectedAtMs: 1000 }));
+    assert.notEqual(
+      a,
+      deliveryIdOf({
+        identity: { ...IDENTITY, poolAddress: "OTHER" },
+        kind: "salvageable",
+        sourceBot: "scout",
+        detectedAtMs: 1000,
+      }),
+    );
   });
 });
 
@@ -70,7 +83,13 @@ describe("envelope", () => {
   });
 
   test("validateEnvelope rejects wrong versions and tampered delivery ids", () => {
-    const env = buildEnvelope({ identity: IDENTITY, kind: "salvageable", sourceBot: "scout", detectedAtMs: 1, score: null });
+    const env = buildEnvelope({
+      identity: IDENTITY,
+      kind: "salvageable",
+      sourceBot: "scout",
+      detectedAtMs: 1,
+      score: null,
+    });
     const forged = { ...JSON.parse(JSON.stringify(env)), deliveryId: "0".repeat(64) };
     assert.throws(() => validateEnvelope(forged), /deliveryId does not match/);
     const wrongVersion = { ...JSON.parse(JSON.stringify(env)), schemaVersion: 99 };
@@ -106,7 +125,10 @@ describe("lifecycle", () => {
     const w = new LifecycleWalker("received");
     w.to("revalidating");
     w.to("rejected-economics");
-    assert.throws(() => w.to("submitting"), /illegal lifecycle transition rejected-economics → submitting/);
+    assert.throws(
+      () => w.to("submitting"),
+      /illegal lifecycle transition rejected-economics → submitting/,
+    );
   });
 
   test("simulation-failed may retry preparation or terminate, nothing else", () => {
@@ -124,7 +146,13 @@ describe("lifecycle", () => {
 describe("InMemoryFleetStore", () => {
   test("admitDelivery collapses at-least-once redelivery to a single admission", async () => {
     const store = new InMemoryFleetStore();
-    const env = buildEnvelope({ identity: IDENTITY, kind: "salvageable", sourceBot: "scout", detectedAtMs: 5, score: null });
+    const env = buildEnvelope({
+      identity: IDENTITY,
+      kind: "salvageable",
+      sourceBot: "scout",
+      detectedAtMs: 5,
+      score: null,
+    });
     const first = await admitDelivery(store, "conservative", env);
     const second = await admitDelivery(store, "conservative", env);
     assert.ok(first);

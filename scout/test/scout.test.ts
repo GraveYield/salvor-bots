@@ -63,7 +63,10 @@ const OPERATOR = Keypair.generate();
 const realNowSec = () => BigInt(Math.floor(Date.now() / 1000));
 
 function scannerPda(): PublicKey {
-  return PublicKey.findProgramAddressSync([Buffer.from("protocol_config")], SCANNER)[0] as PublicKey;
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("protocol_config")],
+    SCANNER,
+  )[0] as PublicKey;
 }
 function vaultPda(): PublicKey {
   return PublicKey.findProgramAddressSync([Buffer.from("protocol_config")], VAULT)[0] as PublicKey;
@@ -83,11 +86,7 @@ function baseOptions(
     }),
     SCANNER,
   );
-  fake.setAccount(
-    vaultPda(),
-    encodeVaultConfig({ authority: PublicKey.default }),
-    VAULT,
-  );
+  fake.setAccount(vaultPda(), encodeVaultConfig({ authority: PublicKey.default }), VAULT);
   return {
     connection: fake.asConnection(),
     cluster: "devnet",
@@ -116,7 +115,12 @@ function baseOptions(
 }
 
 /** A fresh fixture: poolA passes everything; poolB is active; poolC is below TVL. */
-function makeFixture(): { fake: FakeConnection; poolA: PublicKey; poolB: PublicKey; poolC: PublicKey } {
+function makeFixture(): {
+  fake: FakeConnection;
+  poolA: PublicKey;
+  poolB: PublicKey;
+  poolC: PublicKey;
+} {
   const fake = new FakeConnection();
   // Install the ProtocolConfig accounts (spec defaults) — baseOptions
   // re-installs them with real oracle keys when a test goes through it.
@@ -131,7 +135,11 @@ function makeFixture(): { fake: FakeConnection; poolA: PublicKey; poolB: PublicK
   );
   fake.setAccount(vaultPda(), encodeVaultConfig({ authority: PublicKey.default }), VAULT);
   installPool(fake, { poolAddress: poolKey(0xa1), tvlLamports: 2_000_000_000n });
-  installPool(fake, { poolAddress: poolKey(0xb2), tvlLamports: 2_000_000_000n, lastSwapAgeSeconds: 3_600 });
+  installPool(fake, {
+    poolAddress: poolKey(0xb2),
+    tvlLamports: 2_000_000_000n,
+    lastSwapAgeSeconds: 3_600,
+  });
   installPool(fake, { poolAddress: poolKey(0xc3), tvlLamports: 100_000_000n });
   return { fake, poolA: poolKey(0xa1), poolB: poolKey(0xb2), poolC: poolKey(0xc3) };
 }
@@ -322,15 +330,16 @@ describe("ScoutSalvor end-to-end (fake RPC)", () => {
     const salvageable = scout.opportunities().find((o) => o.kind === "salvageable");
     assert.ok(salvageable, "cert inside TTL ⇒ salvageable opportunity");
     assert.equal(salvageable?.certExpiresAt, realNowSec() + 1_800n);
-    assert.equal(
-      (sinks[0] as MemoryReportSink).ofType("opportunity:salvageable").length,
-      1,
-    );
+    assert.equal((sinks[0] as MemoryReportSink).ofType("opportunity:salvageable").length, 1);
   });
 
   test("pools without an attestable last swap are hard-failed and never submitted", async () => {
     const fake = new FakeConnection();
-    installPool(fake, { poolAddress: poolKey(0xd4), tvlLamports: 2_000_000_000n, neverSwapped: true });
+    installPool(fake, {
+      poolAddress: poolKey(0xd4),
+      tvlLamports: 2_000_000_000n,
+      neverSwapped: true,
+    });
     const sinks = [new MemoryReportSink()];
     const { sender, sent } = makeSender(fake);
     const scout = new ScoutSalvor(

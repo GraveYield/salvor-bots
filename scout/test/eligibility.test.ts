@@ -84,7 +84,12 @@ describe("preFilterPool", () => {
   });
 
   test("C1 passes with a 10x heuristic when no swap was found at all", () => {
-    const result = preFilterPool(activity({ noSwapFound: true, lastSwapUnixTs: 0 }), reserves(), metadata(), SPEC);
+    const result = preFilterPool(
+      activity({ noSwapFound: true, lastSwapUnixTs: 0 }),
+      reserves(),
+      metadata(),
+      SPEC,
+    );
     assert.equal(result.passed, true);
   });
 
@@ -101,12 +106,7 @@ describe("preFilterPool", () => {
   });
 
   test("C4 fails when LP supply is burned to dust", () => {
-    const result = preFilterPool(
-      activity(),
-      reserves({ lpSupply: 500n }),
-      metadata(),
-      SPEC,
-    );
+    const result = preFilterPool(activity(), reserves({ lpSupply: 500n }), metadata(), SPEC);
     assert.equal(result.passed, false);
     assert.deepEqual(result.failedCriteria, ["C4-lp-not-burned"]);
   });

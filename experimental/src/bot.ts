@@ -26,7 +26,12 @@
 // further "Specialist" bot is explicitly OUT OF SCOPE for this fleet.
 
 import { Keypair } from "@solana/web3.js";
-import { GraveYieldClient, DEVNET_SCANNER_PROGRAM_ID, DEVNET_VAULT_PROGRAM_ID, type Cluster } from "@graveyield/sdk";
+import {
+  GraveYieldClient,
+  DEVNET_SCANNER_PROGRAM_ID,
+  DEVNET_VAULT_PROGRAM_ID,
+  type Cluster,
+} from "@graveyield/sdk";
 import {
   DEFAULT_TUNABLES,
   StrategyExecutor,
@@ -122,12 +127,17 @@ export class ExperimentalSalvor extends StrategyExecutor {
     const hooks: StrategyHooks = {
       postPrepareGuard: (outcome) => {
         const estimate = outcome.estimate;
-        if (!estimate || estimate.status !== "ok") return "economics not fully resolved — risk caps cannot be evaluated";
-        if (estimate.costs && estimate.costs.priorityFeeBudget > caps.maxPriorityFeeBudgetLamports) {
+        if (!estimate || estimate.status !== "ok")
+          return "economics not fully resolved — risk caps cannot be evaluated";
+        if (
+          estimate.costs &&
+          estimate.costs.priorityFeeBudget > caps.maxPriorityFeeBudgetLamports
+        ) {
           return `priority-fee budget ${estimate.costs.priorityFeeBudget.toString()} exceeds the experiment cap ${caps.maxPriorityFeeBudgetLamports.toString()}`;
         }
         const lpFractionBps = outcome.prepared
-          ? (outcome.prepared.snapshotSummary.salvorLpAmount * 10_000n) / outcome.prepared.snapshotSummary.totalSupply
+          ? (outcome.prepared.snapshotSummary.salvorLpAmount * 10_000n) /
+            outcome.prepared.snapshotSummary.totalSupply
           : 0n;
         if (lpFractionBps > BigInt(caps.maxLpFractionBps)) {
           return `LP position ${lpFractionBps} bps of supply exceeds the experiment cap ${caps.maxLpFractionBps} bps`;

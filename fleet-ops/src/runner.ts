@@ -98,9 +98,9 @@ export class FleetRunner {
       health.counter("scout.cycle-errors");
       const message = error instanceof Error ? error.message : String(error);
       health.heartbeat("scout", "down", `cycle failed: ${message}`);
-      alerts.raise("scout-cycle-failed", "critical",
-        "Scout cycle threw — discovery is stalled",
-        { error: message });
+      alerts.raise("scout-cycle-failed", "critical", "Scout cycle threw — discovery is stalled", {
+        error: message,
+      });
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
@@ -116,12 +116,15 @@ export class FleetRunner {
       const severity = DIAGNOSTIC_SEVERITY[diagnostic.code] ?? "info";
       if (severity === "warn" || severity === "critical") {
         if (severity === "critical") degraded = true;
-        alerts.raise(`monitor-${diagnostic.code}`, severity,
+        alerts.raise(
+          `monitor-${diagnostic.code}`,
+          severity,
           `Monitor diagnostic: ${diagnostic.code}`,
           {
             identityKey: diagnostic.identityKey,
             ...stringifyDetail(diagnostic.detail),
-          });
+          },
+        );
       }
     }
     const observed = this.opts.monitor.snapshot().length;
@@ -146,18 +149,24 @@ export class FleetRunner {
   /** Start both schedules. Returns the stop function. */
   start(): () => void {
     if (this.scoutTimer || this.monitorTimer) return () => this.stop();
-    this.scoutTimer = setInterval(() => {
-      this.runScoutCycle().catch(() => {
-        // runScoutCycle already heartbeated + alerted; the loop must survive.
-      });
-    }, this.opts.scoutPollMs ?? 5 * 60 * 1000);
-    this.monitorTimer = setInterval(() => {
-      try {
-        this.runMonitorSweep();
-      } catch {
-        // diagnose() is in-memory; a throw here is a wiring bug. Survive anyway.
-      }
-    }, this.opts.monitorPollMs ?? 60 * 1000);
+    this.scoutTimer = setInterval(
+      () => {
+        this.runScoutCycle().catch(() => {
+          // runScoutCycle already heartbeated + alerted; the loop must survive.
+        });
+      },
+      this.opts.scoutPollMs ?? 5 * 60 * 1000,
+    );
+    this.monitorTimer = setInterval(
+      () => {
+        try {
+          this.runMonitorSweep();
+        } catch {
+          // diagnose() is in-memory; a throw here is a wiring bug. Survive anyway.
+        }
+      },
+      this.opts.monitorPollMs ?? 60 * 1000,
+    );
     return () => this.stop();
   }
 
@@ -174,10 +183,17 @@ export class FleetRunner {
 }
 
 /** Monitor diagnostic details carry bigints — stringify for alert context. */
-function stringifyDetail(detail: Record<string, unknown>): Record<string, string | number | boolean | null> {
+function stringifyDetail(
+  detail: Record<string, unknown>,
+): Record<string, string | number | boolean | null> {
   const out: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(detail)) {
-    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
       out[key] = value;
     } else if (typeof value === "bigint") {
       out[key] = value.toString(10);

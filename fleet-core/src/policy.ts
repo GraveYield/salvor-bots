@@ -119,7 +119,9 @@ export function validatePolicy(
   if (
     policy.slippageBpsOverride !== undefined &&
     policy.slippageBpsOverride !== null &&
-    (!Number.isInteger(policy.slippageBpsOverride) || policy.slippageBpsOverride < 0 || policy.slippageBpsOverride > 10_000)
+    (!Number.isInteger(policy.slippageBpsOverride) ||
+      policy.slippageBpsOverride < 0 ||
+      policy.slippageBpsOverride > 10_000)
   ) {
     throw new Error("policy: slippageBpsOverride must be an integer in [0, 10_000]");
   }

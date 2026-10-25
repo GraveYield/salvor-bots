@@ -7,18 +7,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { PublicKey } from "@solana/web3.js";
 
-import {
-  CandidateTracker,
-  monitorCandidate,
-  MIN_EPOCH_CONFIRMATION,
-} from "../src/index.js";
-import {
-  FakeConnection,
-  FIXED_NOW,
-  encodeAnchor,
-  encodeCert,
-  poolKey,
-} from "./helpers.js";
+import { CandidateTracker, monitorCandidate, MIN_EPOCH_CONFIRMATION } from "../src/index.js";
+import { FakeConnection, FIXED_NOW, encodeAnchor, encodeCert, poolKey } from "./helpers.js";
 
 const SCANNER = new PublicKey(new Uint8Array(32).fill(0x5c));
 const AMM = new PublicKey("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
@@ -163,7 +153,13 @@ describe("monitorCandidate", () => {
     ] as const) {
       fake.setAccount(
         anchorPdaFor(pool),
-        encodeAnchor({ ammProgramId: AMM, poolAddress: pool, writer: WRITER, firstEligibleEpoch: 8n, writtenAt: BigInt(FIXED_NOW - 10 * 86_400) }),
+        encodeAnchor({
+          ammProgramId: AMM,
+          poolAddress: pool,
+          writer: WRITER,
+          firstEligibleEpoch: 8n,
+          writtenAt: BigInt(FIXED_NOW - 10 * 86_400),
+        }),
         SCANNER,
       );
       fake.setAccount(

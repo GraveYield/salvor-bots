@@ -10,4 +10,10 @@
 export * from "./runner.js";
 export * from "./health.js";
 export * from "./alerts.js";
-export { main as fleetMain, parseArgs as fleetParseArgs, loadFleetOpsConfig, wireFleet, type FleetOpsConfig } from "./cli.js";
+export {
+  main as fleetMain,
+  parseArgs as fleetParseArgs,
+  loadFleetOpsConfig,
+  wireFleet,
+  type FleetOpsConfig,
+} from "./cli.js";

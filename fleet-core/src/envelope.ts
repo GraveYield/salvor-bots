@@ -72,7 +72,9 @@ export function deliveryIdOf(input: {
   detectedAtMs: number;
 }): string {
   const h = createHash("sha256");
-  h.update(`${input.identity.cluster}|${input.identity.ammProgramId}|${input.identity.poolAddress}`);
+  h.update(
+    `${input.identity.cluster}|${input.identity.ammProgramId}|${input.identity.poolAddress}`,
+  );
   h.update(`|${input.kind}`);
   h.update(`|${input.sourceBot}`);
   h.update(`|${input.detectedAtMs}`);
@@ -162,7 +164,12 @@ export function validateEnvelope(value: unknown): OpportunityEnvelope {
     throw new Error(`envelope: unsupported schemaVersion ${String(v.schemaVersion)}`);
   }
   const identity = v.identity as FleetOpportunityIdentity | undefined;
-  if (!identity || typeof identity.cluster !== "string" || typeof identity.ammProgramId !== "string" || typeof identity.poolAddress !== "string") {
+  if (
+    !identity ||
+    typeof identity.cluster !== "string" ||
+    typeof identity.ammProgramId !== "string" ||
+    typeof identity.poolAddress !== "string"
+  ) {
     throw new Error("envelope: missing identity");
   }
   if (v.kind !== "certification-ready" && v.kind !== "salvageable") {
@@ -172,7 +179,11 @@ export function validateEnvelope(value: unknown): OpportunityEnvelope {
     throw new Error("envelope: deliveryId must be a sha256 hex string");
   }
   const provenance = v.provenance as OpportunityProvenance | undefined;
-  if (!provenance || typeof provenance.bot !== "string" || typeof provenance.detectedAtMs !== "number") {
+  if (
+    !provenance ||
+    typeof provenance.bot !== "string" ||
+    typeof provenance.detectedAtMs !== "number"
+  ) {
     throw new Error("envelope: missing provenance");
   }
   // Re-derive the delivery id — a mismatched id means a hand-edited or

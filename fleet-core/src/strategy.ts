@@ -127,7 +127,11 @@ export class StrategyExecutor {
     }
   }
 
-  protected emit(type: Parameters<typeof makeEvent>[0]["type"], identityKey: string, data: Record<string, unknown>): void {
+  protected emit(
+    type: Parameters<typeof makeEvent>[0]["type"],
+    identityKey: string,
+    data: Record<string, unknown>,
+  ): void {
     this.sink.emit(
       makeEvent({
         botId: this.policy.botId,
@@ -148,7 +152,13 @@ export class StrategyExecutor {
     if (!admitted) {
       walker.to("duplicate-suppressed");
       await this.persist(identityKey, walker, null);
-      return { identityKey, admitted: false, state: walker.state, ok: true, reason: "duplicate delivery suppressed" };
+      return {
+        identityKey,
+        admitted: false,
+        state: walker.state,
+        ok: true,
+        reason: "duplicate delivery suppressed",
+      };
     }
 
     // 1b. Fleet-level at-most-once: if ANY bot (including a previous
@@ -159,11 +169,23 @@ export class StrategyExecutor {
     const executedBy = priorRecords.find((r) => r.signature !== null);
     if (executedBy) {
       walker.to("duplicate-suppressed", `already executed by ${executedBy.botId}`);
-      this.emit("opportunity-duplicate", identityKey, { executedBy: executedBy.botId, signature: executedBy.signature });
+      this.emit("opportunity-duplicate", identityKey, {
+        executedBy: executedBy.botId,
+        signature: executedBy.signature,
+      });
       await this.persist(identityKey, walker, null);
-      return { identityKey, admitted: true, state: walker.state, ok: true, reason: `opportunity already executed by ${executedBy.botId}` };
+      return {
+        identityKey,
+        admitted: true,
+        state: walker.state,
+        ok: true,
+        reason: `opportunity already executed by ${executedBy.botId}`,
+      };
     }
-    this.emit("opportunity-received", identityKey, { kind: envelope.kind, deliveryId: envelope.deliveryId });
+    this.emit("opportunity-received", identityKey, {
+      kind: envelope.kind,
+      deliveryId: envelope.deliveryId,
+    });
 
     // 2. Opportunity age.
     if (this.now() - envelope.provenance.detectedAtMs > this.policy.maxOpportunityAgeMs) {
@@ -171,18 +193,36 @@ export class StrategyExecutor {
       walker.to("rejected-stale", "opportunity older than maxOpportunityAgeMs");
       this.emit("opportunity-rejected", identityKey, { reason: "stale opportunity" });
       await this.persist(identityKey, walker, null);
-      return { identityKey, admitted: true, state: walker.state, ok: false, failureClass: "stale-opportunity", reason: "stale opportunity" };
+      return {
+        identityKey,
+        admitted: true,
+        state: walker.state,
+        ok: false,
+        failureClass: "stale-opportunity",
+        reason: "stale opportunity",
+      };
     }
 
     // 3. Lease.
-    const lease = await this.store.acquireLease(identityKey, this.policy.botId, this.policy.leaseTtlMs);
+    const lease = await this.store.acquireLease(
+      identityKey,
+      this.policy.botId,
+      this.policy.leaseTtlMs,
+    );
     if (!lease) {
       walker.to("revalidating");
       walker.to("lease-waiting");
       const holder = await this.store.getLease(identityKey);
       this.emit("lease-denied", identityKey, { holder: holder?.holder ?? "unknown" });
       await this.persist(identityKey, walker, null);
-      return { identityKey, admitted: true, state: walker.state, ok: false, failureClass: "lease-conflict", reason: "another bot holds the lease" };
+      return {
+        identityKey,
+        admitted: true,
+        state: walker.state,
+        ok: false,
+        failureClass: "lease-conflict",
+        reason: "another bot holds the lease",
+      };
     }
     this.emit("lease-acquired", identityKey, { expiresAtMs: lease.expiresAtMs });
 
@@ -208,19 +248,32 @@ export class StrategyExecutor {
       }
       if (!prepared.ok) {
         const terminalClass = prepared.failureClass ?? "unknown";
-        if (terminalClass === "economic-insufficient" || terminalClass === "economic-unresolvable") {
+        if (
+          terminalClass === "economic-insufficient" ||
+          terminalClass === "economic-unresolvable"
+        ) {
           walker.to("rejected-economics");
         } else if (terminalClass === "simulation-failed") {
           walker.to("simulation-failed");
         } else {
           walker.to("failed-terminal");
         }
-        this.emit(terminalClass.startsWith("economic") ? "economic-reject" : "execution-failed", identityKey, {
-          failureClass: terminalClass,
-          ...(prepared.reason !== undefined ? { reason: prepared.reason } : {}),
-        });
+        this.emit(
+          terminalClass.startsWith("economic") ? "economic-reject" : "execution-failed",
+          identityKey,
+          {
+            failureClass: terminalClass,
+            ...(prepared.reason !== undefined ? { reason: prepared.reason } : {}),
+          },
+        );
         await this.persist(identityKey, walker, null);
-        const outcome: StrategyOutcome = { identityKey, admitted: true, state: walker.state, ok: false, failureClass: terminalClass };
+        const outcome: StrategyOutcome = {
+          identityKey,
+          admitted: true,
+          state: walker.state,
+          ok: false,
+          failureClass: terminalClass,
+        };
         if (prepared.reason !== undefined) outcome.reason = prepared.reason;
         return outcome;
       }
@@ -231,9 +284,19 @@ export class StrategyExecutor {
         const risk = this.hooks.postPrepareGuard(prepared as PipelineOutcome & { ok: true });
         if (risk !== null) {
           walker.to("rejected-economics");
-          this.emit("economic-reject", identityKey, { failureClass: "risk-cap-exceeded", reason: risk });
+          this.emit("economic-reject", identityKey, {
+            failureClass: "risk-cap-exceeded",
+            reason: risk,
+          });
           await this.persist(identityKey, walker, null);
-          return { identityKey, admitted: true, state: walker.state, ok: false, failureClass: "risk-cap-exceeded", reason: risk };
+          return {
+            identityKey,
+            admitted: true,
+            state: walker.state,
+            ok: false,
+            failureClass: "risk-cap-exceeded",
+            reason: risk,
+          };
         }
       }
 
@@ -244,9 +307,17 @@ export class StrategyExecutor {
       const sim = await this.pipeline.simulate(prepared.prepared!, envelope.identity);
       if (!sim.ok) {
         walker.to("simulation-failed");
-        this.emit("simulation-failed", identityKey, { reason: sim.reason, failureClass: sim.failureClass });
+        this.emit("simulation-failed", identityKey, {
+          reason: sim.reason,
+          failureClass: sim.failureClass,
+        });
         await this.persist(identityKey, walker, null);
-        const outcome: StrategyOutcome = { identityKey, admitted: true, state: walker.state, ok: false };
+        const outcome: StrategyOutcome = {
+          identityKey,
+          admitted: true,
+          state: walker.state,
+          ok: false,
+        };
         if (sim.failureClass !== undefined) outcome.failureClass = sim.failureClass;
         if (sim.reason !== undefined) outcome.reason = sim.reason;
         return outcome;
@@ -256,8 +327,18 @@ export class StrategyExecutor {
       // 6. Submission — LIVE ONLY.
       if (this.policy.mode !== "live") {
         await this.persist(identityKey, walker, null);
-        this.emit("reported", identityKey, { dryRun: true, wouldSubmit: true, mode: this.policy.mode });
-        return { identityKey, admitted: true, state: walker.state, ok: true, reason: `dry-run complete (mode=${this.policy.mode}) — nothing submitted` };
+        this.emit("reported", identityKey, {
+          dryRun: true,
+          wouldSubmit: true,
+          mode: this.policy.mode,
+        });
+        return {
+          identityKey,
+          admitted: true,
+          state: walker.state,
+          ok: true,
+          reason: `dry-run complete (mode=${this.policy.mode}) — nothing submitted`,
+        };
       }
 
       walker.to("submitting");
@@ -266,11 +347,19 @@ export class StrategyExecutor {
       let lastError: string | null = null;
       for (let attempt = 1; attempt <= this.policy.maxSubmitAttempts; attempt++) {
         try {
-          submitted = await this.pipeline.submit({ prepared: prepared.prepared!, signer, identity: envelope.identity });
+          submitted = await this.pipeline.submit({
+            prepared: prepared.prepared!,
+            signer,
+            identity: envelope.identity,
+          });
           break;
         } catch (err) {
           lastError = String(err);
-          this.emit("execution-failed", identityKey, { attempt, reason: lastError, failureClass: "submission-failed" });
+          this.emit("execution-failed", identityKey, {
+            attempt,
+            reason: lastError,
+            failureClass: "submission-failed",
+          });
           if (attempt < this.policy.maxSubmitAttempts) {
             await sleep(this.retryBackoffMs * attempt);
           }
@@ -278,9 +367,19 @@ export class StrategyExecutor {
       }
       if (!submitted || !submitted.ok) {
         walker.to("failed-terminal");
-        this.emit("execution-failed", identityKey, { reason: lastError ?? "submission failed", failureClass: "submission-failed" });
+        this.emit("execution-failed", identityKey, {
+          reason: lastError ?? "submission failed",
+          failureClass: "submission-failed",
+        });
         await this.persist(identityKey, walker, null);
-        return { identityKey, admitted: true, state: walker.state, ok: false, failureClass: "submission-failed", reason: lastError ?? "submission failed" };
+        return {
+          identityKey,
+          admitted: true,
+          state: walker.state,
+          ok: false,
+          failureClass: "submission-failed",
+          reason: lastError ?? "submission failed",
+        };
       }
       walker.to("submitted");
       if (submitted.signature) {
@@ -331,7 +430,11 @@ export class StrategyExecutor {
     return new PublicKey(new Uint8Array(32).fill(0xee));
   }
 
-  protected async persist(identityKey: string, walker: LifecycleWalker, signature: string | null): Promise<void> {
+  protected async persist(
+    identityKey: string,
+    walker: LifecycleWalker,
+    signature: string | null,
+  ): Promise<void> {
     const existing = await this.store.getExecution(identityKey, this.policy.botId);
     await this.store.putExecution({
       identityKey,

@@ -19,9 +19,22 @@ const POOL = {
 };
 const ROUTE = { quoteInAmount: 1_000_000n, quoteOutLamports: 4_000_000_000n }; // 1 meme → 4 WSOL
 const POSITION = { salvorLpAmount: 1_000_000n };
-const CONFIG = { salvorShareBps: 4_000, maxSlippageBps: 300, jupiterDustThresholdLamports: 666_666n };
-const COSTS_ZERO = { priorityFeeBudgetLamports: 0n, signatureCount: 1, frontedRentLamports: 0n, lamportsPerSignature: 0n };
-const COSTS_BASE_FEE = { priorityFeeBudgetLamports: 0n, signatureCount: 1, frontedRentLamports: 0n }; // 1 × 5_000 lamports
+const CONFIG = {
+  salvorShareBps: 4_000,
+  maxSlippageBps: 300,
+  jupiterDustThresholdLamports: 666_666n,
+};
+const COSTS_ZERO = {
+  priorityFeeBudgetLamports: 0n,
+  signatureCount: 1,
+  frontedRentLamports: 0n,
+  lamportsPerSignature: 0n,
+};
+const COSTS_BASE_FEE = {
+  priorityFeeBudgetLamports: 0n,
+  signatureCount: 1,
+  frontedRentLamports: 0n,
+}; // 1 × 5_000 lamports
 
 describe("estimateSalvageEconomics", () => {
   test("proportional withdraw + route conversion + live 40% share (integer exact)", () => {
@@ -64,7 +77,13 @@ describe("estimateSalvageEconomics", () => {
       route: ROUTE,
       position: POSITION,
       config: CONFIG,
-      costs: { priorityFeeBudgetLamports: 100_000n, signatureCount: 2, frontedRentLamports: 50_000n, lamportsPerSignature: 5_000n, expectedFailureCostLamports: 10_000n },
+      costs: {
+        priorityFeeBudgetLamports: 100_000n,
+        signatureCount: 2,
+        frontedRentLamports: 50_000n,
+        lamportsPerSignature: 5_000n,
+        expectedFailureCostLamports: 10_000n,
+      },
       minNetProfitLamports: 0n,
     });
     assert.equal(est.status, "ok");
@@ -99,7 +118,11 @@ describe("estimateSalvageEconomics", () => {
       slippageBpsOverride: 5_000, // attempts to widen past 300
       minNetProfitLamports: 0n,
     });
-    assert.equal(widened.effectiveSlippageBps, 300, "override above the config max must clamp to the config max");
+    assert.equal(
+      widened.effectiveSlippageBps,
+      300,
+      "override above the config max must clamp to the config max",
+    );
   });
 
   test("net below the configured minimum is flagged economic-insufficient (status still ok)", () => {
@@ -108,7 +131,11 @@ describe("estimateSalvageEconomics", () => {
       route: ROUTE,
       position: POSITION,
       config: CONFIG,
-      costs: { priorityFeeBudgetLamports: 500_000_000n, signatureCount: 1, frontedRentLamports: 0n },
+      costs: {
+        priorityFeeBudgetLamports: 500_000_000n,
+        signatureCount: 1,
+        frontedRentLamports: 0n,
+      },
       minNetProfitLamports: 0n,
     });
     assert.equal(est.status, "ok");
@@ -133,7 +160,13 @@ describe("estimateSalvageEconomics", () => {
   });
 
   test("mirror orientation (WSOL on the coin side) computes symmetric economics", () => {
-    const mirror = { ...POOL, coinMint: POOL.wsolMint, pcMint: POOL.coinMint, coinReserve: POOL.pcReserve, pcReserve: POOL.coinReserve };
+    const mirror = {
+      ...POOL,
+      coinMint: POOL.wsolMint,
+      pcMint: POOL.coinMint,
+      coinReserve: POOL.pcReserve,
+      pcReserve: POOL.coinReserve,
+    };
     const est = estimateSalvageEconomics({
       pool: mirror,
       route: ROUTE,
@@ -143,25 +176,95 @@ describe("estimateSalvageEconomics", () => {
       minNetProfitLamports: 0n,
     });
     assert.equal(est.status, "ok");
-    assert.equal(est.grossProceedsWsolLamports, 900_000_000n, "the same reserves must price identically after mirroring");
+    assert.equal(
+      est.grossProceedsWsolLamports,
+      900_000_000n,
+      "the same reserves must price identically after mirroring",
+    );
   });
 
   test("rejects: no WSOL side, zero supply, zero LP, LP > supply, empty quote", () => {
     const badOrientation = { ...POOL, pcMint: "USDC11111111111111111111111111111111111111" };
-    assert.equal(estimateSalvageEconomics({ pool: badOrientation, route: ROUTE, position: POSITION, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }).failureClass, "economic-unresolvable");
-    assert.equal(estimateSalvageEconomics({ pool: { ...POOL, lpSupply: 0n }, route: ROUTE, position: POSITION, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }).failureClass, "economic-unresolvable");
-    assert.equal(estimateSalvageEconomics({ pool: POOL, route: ROUTE, position: { salvorLpAmount: 0n }, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }).failureClass, "economic-unresolvable");
-    assert.equal(estimateSalvageEconomics({ pool: POOL, route: ROUTE, position: { salvorLpAmount: 10_000_001n }, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }).failureClass, "economic-unresolvable");
-    assert.equal(estimateSalvageEconomics({ pool: POOL, route: { quoteInAmount: 0n, quoteOutLamports: 0n }, position: POSITION, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }).failureClass, "route-failure");
+    assert.equal(
+      estimateSalvageEconomics({
+        pool: badOrientation,
+        route: ROUTE,
+        position: POSITION,
+        config: CONFIG,
+        costs: COSTS_ZERO,
+        minNetProfitLamports: 0n,
+      }).failureClass,
+      "economic-unresolvable",
+    );
+    assert.equal(
+      estimateSalvageEconomics({
+        pool: { ...POOL, lpSupply: 0n },
+        route: ROUTE,
+        position: POSITION,
+        config: CONFIG,
+        costs: COSTS_ZERO,
+        minNetProfitLamports: 0n,
+      }).failureClass,
+      "economic-unresolvable",
+    );
+    assert.equal(
+      estimateSalvageEconomics({
+        pool: POOL,
+        route: ROUTE,
+        position: { salvorLpAmount: 0n },
+        config: CONFIG,
+        costs: COSTS_ZERO,
+        minNetProfitLamports: 0n,
+      }).failureClass,
+      "economic-unresolvable",
+    );
+    assert.equal(
+      estimateSalvageEconomics({
+        pool: POOL,
+        route: ROUTE,
+        position: { salvorLpAmount: 10_000_001n },
+        config: CONFIG,
+        costs: COSTS_ZERO,
+        minNetProfitLamports: 0n,
+      }).failureClass,
+      "economic-unresolvable",
+    );
+    assert.equal(
+      estimateSalvageEconomics({
+        pool: POOL,
+        route: { quoteInAmount: 0n, quoteOutLamports: 0n },
+        position: POSITION,
+        config: CONFIG,
+        costs: COSTS_ZERO,
+        minNetProfitLamports: 0n,
+      }).failureClass,
+      "route-failure",
+    );
   });
 
   test("validation: negative amounts and negative minimums throw RangeError", () => {
     assert.throws(
-      () => estimateSalvageEconomics({ pool: { ...POOL, coinReserve: -1n }, route: ROUTE, position: POSITION, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: 0n }),
+      () =>
+        estimateSalvageEconomics({
+          pool: { ...POOL, coinReserve: -1n },
+          route: ROUTE,
+          position: POSITION,
+          config: CONFIG,
+          costs: COSTS_ZERO,
+          minNetProfitLamports: 0n,
+        }),
       RangeError,
     );
     assert.throws(
-      () => estimateSalvageEconomics({ pool: POOL, route: ROUTE, position: POSITION, config: CONFIG, costs: COSTS_ZERO, minNetProfitLamports: -1n }),
+      () =>
+        estimateSalvageEconomics({
+          pool: POOL,
+          route: ROUTE,
+          position: POSITION,
+          config: CONFIG,
+          costs: COSTS_ZERO,
+          minNetProfitLamports: -1n,
+        }),
       RangeError,
     );
   });
@@ -190,6 +293,9 @@ describe("helpers", () => {
     const side = memecoinSideOf(POOL);
     assert.equal(side.memecoinMint, POOL.coinMint);
     assert.equal(side.coinIsWsol, false);
-    assert.throws(() => memecoinSideOf({ ...POOL, pcMint: "USDC11111111111111111111111111111111111111" }), /7019/);
+    assert.throws(
+      () => memecoinSideOf({ ...POOL, pcMint: "USDC11111111111111111111111111111111111111" }),
+      /7019/,
+    );
   });
 });

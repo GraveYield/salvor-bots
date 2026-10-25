@@ -13,7 +13,11 @@
 // with AT MOST one executor enabled per identity via configuration.
 // Monitor/Risk observes every executor's events regardless of topology.
 
-import { opportunityKey, type FleetOpportunityIdentity, type OpportunityEnvelope } from "./envelope.js";
+import {
+  opportunityKey,
+  type FleetOpportunityIdentity,
+  type OpportunityEnvelope,
+} from "./envelope.js";
 import type { ExecutionState, TransitionRecord } from "./lifecycle.js";
 
 /** A lease on one opportunity identity held by one bot. */
@@ -61,7 +65,11 @@ export interface FleetStore {
    * Try to acquire the lease for `identityKey`. Returns the lease when
    * free or expired, `null` when another holder still owns it.
    */
-  acquireLease(identityKey: string, holder: string, ttlMs: number): Promise<OpportunityLease | null>;
+  acquireLease(
+    identityKey: string,
+    holder: string,
+    ttlMs: number,
+  ): Promise<OpportunityLease | null>;
   /** Renew (extend) a lease the holder currently owns. */
   renewLease(identityKey: string, holder: string, ttlMs: number): Promise<OpportunityLease | null>;
   /** Release a lease (completion, failure, or shutdown). */
@@ -94,7 +102,11 @@ export class InMemoryFleetStore implements FleetStore {
     return this.deliveries.has(`${botId}#${deliveryId}`);
   }
 
-  async markDelivery(botId: string, deliveryId: string, envelope: OpportunityEnvelope): Promise<void> {
+  async markDelivery(
+    botId: string,
+    deliveryId: string,
+    envelope: OpportunityEnvelope,
+  ): Promise<void> {
     this.deliveries.set(`${botId}#${deliveryId}`, envelope);
   }
 
@@ -103,7 +115,10 @@ export class InMemoryFleetStore implements FleetStore {
   }
 
   async putExecution(record: ExecutionRecord): Promise<void> {
-    this.executions.set(`${record.identityKey}#${record.botId}`, { ...record, updatedAtMs: this.now() });
+    this.executions.set(`${record.identityKey}#${record.botId}`, {
+      ...record,
+      updatedAtMs: this.now(),
+    });
   }
 
   async listExecutions(identityKey: string): Promise<ExecutionRecord[]> {
@@ -114,7 +129,11 @@ export class InMemoryFleetStore implements FleetStore {
     return out;
   }
 
-  async acquireLease(identityKey: string, holder: string, ttlMs: number): Promise<OpportunityLease | null> {
+  async acquireLease(
+    identityKey: string,
+    holder: string,
+    ttlMs: number,
+  ): Promise<OpportunityLease | null> {
     const existing = this.leases.get(identityKey);
     const now = this.now();
     if (existing && existing.holder !== holder && existing.expiresAtMs > now) {
@@ -125,7 +144,11 @@ export class InMemoryFleetStore implements FleetStore {
     return lease;
   }
 
-  async renewLease(identityKey: string, holder: string, ttlMs: number): Promise<OpportunityLease | null> {
+  async renewLease(
+    identityKey: string,
+    holder: string,
+    ttlMs: number,
+  ): Promise<OpportunityLease | null> {
     const existing = this.leases.get(identityKey);
     const now = this.now();
     if (!existing || existing.holder !== holder || existing.expiresAtMs <= now) return null;

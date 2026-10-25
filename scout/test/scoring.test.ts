@@ -65,10 +65,7 @@ function candidate(overrides?: {
 describe("scoreCandidate", () => {
   test("higher margins give a higher score", () => {
     const s1 = scoreCandidate(candidate(), SPEC).score;
-    const s2 = scoreCandidate(
-      candidate({ reserves: { tvlLamports: 4_000_000_000n } }),
-      SPEC,
-    ).score;
+    const s2 = scoreCandidate(candidate({ reserves: { tvlLamports: 4_000_000_000n } }), SPEC).score;
     assert.ok(s2 > s1, `tvl x4 must score higher: ${s2} > ${s1}`);
   });
 
@@ -99,7 +96,10 @@ describe("scoreCandidate", () => {
       SPEC,
     ).scoreBreakdown;
     assert.equal(breakdown.priceCollapseMargin, 0);
-    assert.equal(scoreCandidate(candidate({ reserves: { coinReserve: 0n, pcReserve: 0n } }), SPEC).score, 0);
+    assert.equal(
+      scoreCandidate(candidate({ reserves: { coinReserve: 0n, pcReserve: 0n } }), SPEC).score,
+      0,
+    );
   });
 
   test("score is the product of the three margins", () => {

@@ -64,9 +64,18 @@ describe("CandidateQueue", () => {
     q.enqueue(makeScored(0x20, 3.0));
     q.enqueue(makeScored(0x30, 2.0));
     const drained = q.drain(3);
-    assert.equal(drained[0]?.candidate.poolAddress.toBase58(), new PublicKey(new Uint8Array(32).fill(0x20)).toBase58());
-    assert.equal(drained[1]?.candidate.poolAddress.toBase58(), new PublicKey(new Uint8Array(32).fill(0x30)).toBase58());
-    assert.equal(drained[2]?.candidate.poolAddress.toBase58(), new PublicKey(new Uint8Array(32).fill(0x10)).toBase58());
+    assert.equal(
+      drained[0]?.candidate.poolAddress.toBase58(),
+      new PublicKey(new Uint8Array(32).fill(0x20)).toBase58(),
+    );
+    assert.equal(
+      drained[1]?.candidate.poolAddress.toBase58(),
+      new PublicKey(new Uint8Array(32).fill(0x30)).toBase58(),
+    );
+    assert.equal(
+      drained[2]?.candidate.poolAddress.toBase58(),
+      new PublicKey(new Uint8Array(32).fill(0x10)).toBase58(),
+    );
     assert.equal(q.size(), 0);
   });
 
@@ -80,7 +89,10 @@ describe("CandidateQueue", () => {
     assert.equal(q.size(), 1);
     const rest = q.drain(2);
     assert.equal(rest.length, 1);
-    assert.equal(rest[0]?.candidate.poolAddress.toBase58(), new PublicKey(new Uint8Array(32).fill(0x01)).toBase58());
+    assert.equal(
+      rest[0]?.candidate.poolAddress.toBase58(),
+      new PublicKey(new Uint8Array(32).fill(0x01)).toBase58(),
+    );
   });
 
   test("re-enqueueing a pool keeps the higher score (dedup by address)", () => {

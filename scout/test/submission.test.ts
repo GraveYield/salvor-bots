@@ -19,11 +19,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  ComputeBudgetProgram,
-  PublicKey,
-  type TransactionInstruction,
-} from "@solana/web3.js";
+import { ComputeBudgetProgram, PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import BN from "bn.js";
 import {
@@ -57,7 +53,11 @@ const oracle = {
 function clientFor(fake: FakeConnection, feeCeiling = 1_000_000_000n): GraveYieldClient {
   fake.setAccount(
     PublicKey.findProgramAddressSync([Buffer.from("protocol_config")], SCANNER)[0] as PublicKey,
-    encodeScannerConfig({ authority: PublicKey.default, activityOracle: oracle.publicKey, launchPriceOracle: oracle.publicKey }),
+    encodeScannerConfig({
+      authority: PublicKey.default,
+      activityOracle: oracle.publicKey,
+      launchPriceOracle: oracle.publicKey,
+    }),
     SCANNER,
   );
   fake.setAccount(
@@ -286,7 +286,11 @@ describe("Charter guard", () => {
     });
     const sig = signAttestation(msg, oracle);
     assert.equal(
-      nacl.sign.detached.verify(Buffer.from(msg), Buffer.from(sig), Buffer.from(oracle.publicKey.toBytes())),
+      nacl.sign.detached.verify(
+        Buffer.from(msg),
+        Buffer.from(sig),
+        Buffer.from(oracle.publicKey.toBytes()),
+      ),
       true,
     );
   });

@@ -42,8 +42,14 @@ describe("loadOracleIdentity", () => {
   });
 
   test("rejects wrong-length keys", () => {
-    assert.throws(() => loadOracleIdentity(bs58.encode(new Uint8Array(16)), "TEST_ORACLE"), /32 bytes/);
-    assert.throws(() => loadOracleIdentity(bs58.encode(new Uint8Array(64)), "TEST_ORACLE"), /32 bytes/);
+    assert.throws(
+      () => loadOracleIdentity(bs58.encode(new Uint8Array(16)), "TEST_ORACLE"),
+      /32 bytes/,
+    );
+    assert.throws(
+      () => loadOracleIdentity(bs58.encode(new Uint8Array(64)), "TEST_ORACLE"),
+      /32 bytes/,
+    );
   });
 });
 
@@ -51,10 +57,7 @@ describe("loadSalvorKeypair", () => {
   test("base58 64-byte secret key", () => {
     const kp = nacl.sign.keyPair.fromSeed(SEED);
     const loaded = loadSalvorKeypair(bs58.encode(kp.secretKey), "TEST_KP");
-    assert.deepEqual(
-      Buffer.from(loaded.secretKey),
-      Buffer.from(kp.secretKey),
-    );
+    assert.deepEqual(Buffer.from(loaded.secretKey), Buffer.from(kp.secretKey));
   });
 
   test("base58 32-byte seed", () => {
@@ -89,6 +92,9 @@ describe("loadSalvorKeypair", () => {
   });
 
   test("rejects wrong-length base58", () => {
-    assert.throws(() => loadSalvorKeypair(bs58.encode(new Uint8Array(10)), "TEST_KP"), /32 \(seed\) or 64/);
+    assert.throws(
+      () => loadSalvorKeypair(bs58.encode(new Uint8Array(10)), "TEST_KP"),
+      /32 \(seed\) or 64/,
+    );
   });
 });

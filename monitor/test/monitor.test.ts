@@ -29,12 +29,31 @@ const IDENTITY = {
 const KEY = opportunityKey(IDENTITY);
 
 function config(overrides?: Partial<MonitorConfig>): MonitorConfig {
-  return { botId: "monitor", staleAfterMs: 60_000, verificationGraceMs: 30_000, maxAttemptsPerIdentity: 2, ...overrides };
+  return {
+    botId: "monitor",
+    staleAfterMs: 60_000,
+    verificationGraceMs: 30_000,
+    maxAttemptsPerIdentity: 2,
+    ...overrides,
+  };
 }
 
 /** A deterministic event recorder feeding the monitor. */
-function eventAt(botId: string, type: FleetEvent["type"], tsMs: number, data?: Record<string, unknown>, extra?: { identityKey?: string; failureClass?: FleetEvent["failureClass"] }): FleetEvent {
-  return makeEvent({ botId, type, identity: extra?.identityKey ?? KEY, data, failureClass: extra?.failureClass, now: () => tsMs });
+function eventAt(
+  botId: string,
+  type: FleetEvent["type"],
+  tsMs: number,
+  data?: Record<string, unknown>,
+  extra?: { identityKey?: string; failureClass?: FleetEvent["failureClass"] },
+): FleetEvent {
+  return makeEvent({
+    botId,
+    type,
+    identity: extra?.identityKey ?? KEY,
+    data,
+    failureClass: extra?.failureClass,
+    now: () => tsMs,
+  });
 }
 
 function makeMonitor(now: () => number, cfg?: MonitorConfig) {
@@ -53,22 +72,44 @@ describe("event ingestion + lifecycle tracking", () => {
   test("a full executor story folds into one observation", () => {
     const now = () => 10_000;
     const { monitor } = makeMonitor(now);
-    const env = buildEnvelope({ identity: IDENTITY, kind: "salvageable", sourceBot: "scout", detectedAtMs: 9_000, score: 0.4 });
+    const env = buildEnvelope({
+      identity: IDENTITY,
+      kind: "salvageable",
+      sourceBot: "scout",
+      detectedAtMs: 9_000,
+      score: 0.4,
+    });
 
-    monitor.observeFleetEvent(eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }), env);
-    monitor.observeFleetEvent(eventAt("conservative", "revalidated", 10_100, { kind: "salvageable" }), env);
-    monitor.observeFleetEvent(eventAt("conservative", "economic-pass", 10_200, { netProfitLamports: "1" }), env);
+    monitor.observeFleetEvent(
+      eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }),
+      env,
+    );
+    monitor.observeFleetEvent(
+      eventAt("conservative", "revalidated", 10_100, { kind: "salvageable" }),
+      env,
+    );
+    monitor.observeFleetEvent(
+      eventAt("conservative", "economic-pass", 10_200, { netProfitLamports: "1" }),
+      env,
+    );
     monitor.observeFleetEvent(eventAt("conservative", "prepared", 10_300), env);
-    monitor.observeFleetEvent(eventAt("conservative", "confirmed", 11_000, {
-      signature: "SIG_ABC",
-      totalProceedsLamports: "900000000",
-      salvorAmountLamports: "360000000",
-    }), env);
+    monitor.observeFleetEvent(
+      eventAt("conservative", "confirmed", 11_000, {
+        signature: "SIG_ABC",
+        totalProceedsLamports: "900000000",
+        salvorAmountLamports: "360000000",
+      }),
+      env,
+    );
 
     const obs = monitor.observe(KEY);
     assert.ok(obs);
     assert.equal(obs.claims.length, 2);
-    assert.equal(obs.attempts.length, 2, "economic-pass + prepared both count as execution attempts");
+    assert.equal(
+      obs.attempts.length,
+      2,
+      "economic-pass + prepared both count as execution attempts",
+    );
     assert.equal(obs.signatures.length, 1);
     assert.equal(obs.signatures[0]?.signature, "SIG_ABC");
     assert.equal(obs.reportedReceipt?.totalProceedsLamports, "900000000");
@@ -77,7 +118,13 @@ describe("event ingestion + lifecycle tracking", () => {
   test("replaying the same recorded events is side-effect-free (replayable tests)", () => {
     const now = () => 10_000;
     const { monitor } = makeMonitor(now);
-    const env = buildEnvelope({ identity: IDENTITY, kind: "salvageable", sourceBot: "scout", detectedAtMs: 9_000, score: 0.4 });
+    const env = buildEnvelope({
+      identity: IDENTITY,
+      kind: "salvageable",
+      sourceBot: "scout",
+      detectedAtMs: 9_000,
+      score: 0.4,
+    });
     const stream: Array<[FleetEvent, typeof env]> = [
       [eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }), env],
       [eventAt("conservative", "prepared", 10_300), env],
@@ -91,7 +138,11 @@ describe("event ingestion + lifecycle tracking", () => {
 
   test("scout events are tracked on their own channel", () => {
     const { monitor } = makeMonitor(() => 1);
-    monitor.observeScoutEvent({ tsMs: 1, type: "opportunity:certification-ready", pool: IDENTITY.poolAddress });
+    monitor.observeScoutEvent({
+      tsMs: 1,
+      type: "opportunity:certification-ready",
+      pool: IDENTITY.poolAddress,
+    });
     const snap = monitor.snapshot();
     assert.equal(snap.length, 1);
     assert.equal(snap[0]?.poolAddress, IDENTITY.poolAddress);
@@ -102,7 +153,9 @@ describe("anomaly diagnostics", () => {
   test("stale opportunity (no activity, no signature) is flagged", () => {
     let now = 10_000;
     const { monitor } = makeMonitor(() => now);
-    monitor.observeFleetEvent(eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }));
+    monitor.observeFleetEvent(
+      eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }),
+    );
     now = 200_000; // way past staleAfterMs
     const diags = monitor.diagnose();
     assert.ok(diags.some((d) => d.code === "stale-opportunity"));
@@ -112,7 +165,11 @@ describe("anomaly diagnostics", () => {
     let now = 1_800_000_000_000;
     const { monitor } = makeMonitor(() => now);
     // Cert expiring 5 minutes out → imminent.
-    monitor.observeFleetEvent(eventAt("conservative", "revalidated", now, { certExpiresAt: String(Math.floor(now / 1000) + 300) }));
+    monitor.observeFleetEvent(
+      eventAt("conservative", "revalidated", now, {
+        certExpiresAt: String(Math.floor(now / 1000) + 300),
+      }),
+    );
     assert.ok(monitor.diagnose().some((d) => d.code === "cert-expiry-imminent"));
     // After expiry → expired.
     now += 400_000;
@@ -131,8 +188,12 @@ describe("anomaly diagnostics", () => {
 
   test("conflicting kind claims from two bots are flagged", () => {
     const { monitor } = makeMonitor(() => 1);
-    monitor.observeFleetEvent(eventAt("conservative", "opportunity-received", 1, { kind: "salvageable" }));
-    monitor.observeFleetEvent(eventAt("sniper", "opportunity-received", 2, { kind: "certification-ready" }));
+    monitor.observeFleetEvent(
+      eventAt("conservative", "opportunity-received", 1, { kind: "salvageable" }),
+    );
+    monitor.observeFleetEvent(
+      eventAt("sniper", "opportunity-received", 2, { kind: "certification-ready" }),
+    );
     assert.ok(monitor.diagnose().some((d) => d.code === "conflicting-claims"));
   });
 
@@ -140,20 +201,38 @@ describe("anomaly diagnostics", () => {
     const { monitor } = makeMonitor(() => 1);
     monitor.observeFleetEvent(eventAt("conservative", "confirmed", 1, { signature: "SIG_X" }));
     assert.ok(monitor.diagnose().some((d) => d.code === "unverified-confirmation"));
-    monitor.observeFleetEvent(eventAt("conservative", "confirmed", 2, {
-      signature: "SIG_X",
-      totalProceedsLamports: "10",
-      salvorAmountLamports: "4",
-      lpHolderAmountLamports: "4",
-      protocolAmountLamports: "2",
-    }));
+    monitor.observeFleetEvent(
+      eventAt("conservative", "confirmed", 2, {
+        signature: "SIG_X",
+        totalProceedsLamports: "10",
+        salvorAmountLamports: "4",
+        lpHolderAmountLamports: "4",
+        protocolAmountLamports: "2",
+      }),
+    );
     assert.ok(!monitor.diagnose().some((d) => d.code === "unverified-confirmation"));
   });
 
   test("repeated non-transient failures escalate to critical", () => {
     const { monitor } = makeMonitor(() => 1);
-    monitor.observeFleetEvent(eventAt("conservative", "simulation-failed", 1, { reason: "r1" }, { failureClass: "simulation-failed" }));
-    monitor.observeFleetEvent(eventAt("conservative", "simulation-failed", 2, { reason: "r2" }, { failureClass: "simulation-failed" }));
+    monitor.observeFleetEvent(
+      eventAt(
+        "conservative",
+        "simulation-failed",
+        1,
+        { reason: "r1" },
+        { failureClass: "simulation-failed" },
+      ),
+    );
+    monitor.observeFleetEvent(
+      eventAt(
+        "conservative",
+        "simulation-failed",
+        2,
+        { reason: "r2" },
+        { failureClass: "simulation-failed" },
+      ),
+    );
     const diag = monitor.diagnose().find((d) => d.code === "failed-simulation");
     assert.ok(diag);
     assert.equal(diag.severity, "critical");
@@ -162,29 +241,44 @@ describe("anomaly diagnostics", () => {
 
 describe("on-chain reconciliation (read-only)", () => {
   test("receipt-verified: sums + shares + reported amounts match the chain", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
     const sink = new MemoryEventSink();
     const monitor = new FleetMonitor({
       client: w.client,
       config: config({ now: () => 1 }),
       sink,
     });
-    const key = opportunityKey({ cluster: "localnet", ammProgramId: "RAYDIUM", poolAddress: w.poolAddress.toBase58() })
-      .replace("RAYDIUM", "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
+    const key = opportunityKey({
+      cluster: "localnet",
+      ammProgramId: "RAYDIUM",
+      poolAddress: w.poolAddress.toBase58(),
+    }).replace("RAYDIUM", "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
     const env = buildEnvelope({
-      identity: { cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() },
+      identity: {
+        cluster: "localnet",
+        ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        poolAddress: w.poolAddress.toBase58(),
+      },
       kind: "salvageable",
       sourceBot: "scout",
       detectedAtMs: 1,
       score: null,
     });
-    monitor.observeFleetEvent(eventAt("conservative", "confirmed", 2, {
-      signature: "SIG_1",
-      totalProceedsLamports: "900000000",
-      salvorAmountLamports: "360000000",
-      lpHolderAmountLamports: "360000000",
-      protocolAmountLamports: "180000000",
-    }), env);
+    monitor.observeFleetEvent(
+      eventAt("conservative", "confirmed", 2, {
+        signature: "SIG_1",
+        totalProceedsLamports: "900000000",
+        salvorAmountLamports: "360000000",
+        lpHolderAmountLamports: "360000000",
+        protocolAmountLamports: "180000000",
+      }),
+      env,
+    );
 
     // Install the exact matching receipt on the fake chain.
     w.rpc.setAccount(
@@ -211,9 +305,22 @@ describe("on-chain reconciliation (read-only)", () => {
   });
 
   test("receipt-anomaly: a 50/30/20 split off-protocol is caught", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
-    const monitor = new FleetMonitor({ client: w.client, config: config({ now: () => 1 }), sink: new MemoryEventSink() });
-    const key = opportunityKey({ cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
+    const monitor = new FleetMonitor({
+      client: w.client,
+      config: config({ now: () => 1 }),
+      sink: new MemoryEventSink(),
+    });
+    const key = opportunityKey({
+      cluster: "localnet",
+      ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      poolAddress: w.poolAddress.toBase58(),
+    });
     w.rpc.setAccount(
       salvageReceiptPda(new PublicKey(VAULT_ID), w.poolAddress),
       encodeSalvageReceipt({
@@ -233,9 +340,22 @@ describe("on-chain reconciliation (read-only)", () => {
   });
 
   test("receipt-missing: a claimed confirmation with no on-chain receipt", async () => {
-    const w = buildWorld({ wsolReserve: 5_000_000_000n, memecoinReserve: 1_000_000n, lpSupply: 10_000_000n, salvorLpAmount: 1_000_000n });
-    const monitor = new FleetMonitor({ client: w.client, config: config({ now: () => 1 }), sink: new MemoryEventSink() });
-    const key = opportunityKey({ cluster: "localnet", ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", poolAddress: w.poolAddress.toBase58() });
+    const w = buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+    });
+    const monitor = new FleetMonitor({
+      client: w.client,
+      config: config({ now: () => 1 }),
+      sink: new MemoryEventSink(),
+    });
+    const key = opportunityKey({
+      cluster: "localnet",
+      ammProgramId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      poolAddress: w.poolAddress.toBase58(),
+    });
     const rec = await monitor.reconcile(key, "conservative", "SIG_MISSING");
     assert.equal(rec.status, "receipt-missing");
   });

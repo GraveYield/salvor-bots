@@ -21,10 +21,7 @@
 import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 
-import {
-  DEVNET_SCANNER_PROGRAM_ID,
-  DEVNET_VAULT_PROGRAM_ID,
-} from "@graveyield/sdk";
+import { DEVNET_SCANNER_PROGRAM_ID, DEVNET_VAULT_PROGRAM_ID } from "@graveyield/sdk";
 
 /** Spec defaults (Charter-locked at devnet launch) — mirrors the SDK constants. */
 export const SCOUT_SPEC_DEFAULTS = {

@@ -92,7 +92,10 @@ export class LifecycleWalker {
   private current: ExecutionState;
   private readonly history: TransitionRecord[] = [];
 
-  constructor(initial: ExecutionState = "received", private readonly now: () => number = Date.now) {
+  constructor(
+    initial: ExecutionState = "received",
+    private readonly now: () => number = Date.now,
+  ) {
     this.current = initial;
     this.history.push({ from: null, to: initial, tsMs: this.now(), note: null });
   }

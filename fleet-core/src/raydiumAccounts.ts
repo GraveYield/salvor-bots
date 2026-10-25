@@ -132,16 +132,36 @@ export async function deriveV4CpiAccounts(
   // --- AmmInfo fields.
   const openOrders = readPubkey(poolInfo.data, AMM_INFO_OFFSETS.OPEN_ORDERS, "amm_open_orders");
   const market = readPubkey(poolInfo.data, AMM_INFO_OFFSETS.MARKET, "market");
-  const marketProgram = readPubkey(poolInfo.data, AMM_INFO_OFFSETS.MARKET_PROGRAM, "market_program");
-  const targetOrders = readPubkey(poolInfo.data, AMM_INFO_OFFSETS.TARGET_ORDERS, "amm_target_orders");
+  const marketProgram = readPubkey(
+    poolInfo.data,
+    AMM_INFO_OFFSETS.MARKET_PROGRAM,
+    "market_program",
+  );
+  const targetOrders = readPubkey(
+    poolInfo.data,
+    AMM_INFO_OFFSETS.TARGET_ORDERS,
+    "amm_target_orders",
+  );
 
   // --- Serum market state.
   const marketInfo = await fetchAccount(connection, market, "market");
   requireOwner(marketInfo.owner, marketProgram, "market");
-  const serumCoinMint = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.COIN_MINT, "market coin_mint");
+  const serumCoinMint = readPubkey(
+    marketInfo.data,
+    MARKET_STATE_OFFSETS.COIN_MINT,
+    "market coin_mint",
+  );
   const serumPcMint = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.PC_MINT, "market pc_mint");
-  const marketCoinVault = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.COIN_VAULT, "market coin_vault");
-  const marketPcVault = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.PC_VAULT, "market pc_vault");
+  const marketCoinVault = readPubkey(
+    marketInfo.data,
+    MARKET_STATE_OFFSETS.COIN_VAULT,
+    "market coin_vault",
+  );
+  const marketPcVault = readPubkey(
+    marketInfo.data,
+    MARKET_STATE_OFFSETS.PC_VAULT,
+    "market pc_vault",
+  );
   const eventQueue = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.EVENT_Q, "market event_q");
   const bids = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.BIDS, "market bids");
   const asks = readPubkey(marketInfo.data, MARKET_STATE_OFFSETS.ASKS, "market asks");
@@ -230,7 +250,9 @@ export async function deriveV4CpiAccounts(
  * Convert the derived set into the SDK's canonical 13 remaining
  * accounts (exact ra_idx order — see `salvagePool.ts`).
  */
-export function toRemainingAccounts(d: DerivedV4Accounts): ReturnType<typeof raydiumV4RemainingAccounts> {
+export function toRemainingAccounts(
+  d: DerivedV4Accounts,
+): ReturnType<typeof raydiumV4RemainingAccounts> {
   return raydiumV4RemainingAccounts(
     { coinVault: d.ammCoinVault, pcVault: d.ammPcVault },
     {
