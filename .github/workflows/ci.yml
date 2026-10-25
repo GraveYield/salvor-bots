@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Must match .nvmrc and engines.node in package.json.
+  NODE_VERSION: 24
+
+jobs:
+  # Phase 1 (build/reliability): this repo had ZERO CI before Phase 1 —
+  # build, typecheck, and the 354-test suite (238 workspace + 116 root SDK
+  # mirror) ran only when a developer remembered to run them locally.
+  verify:
+    name: build + typecheck + lint + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # pnpm/action-setup@v6 reads the version from the packageManager field
+      # (pnpm@9.12.0 — same pin as graveyield-protocol; keep in sync).
+      - uses: pnpm/action-setup@v6
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      # IMPORTANT: `pnpm -r` covers only the 7 workspace packages — the root
+      # project (@graveyield/sdk, the vendored SDK mirror enforced
+      # byte-equal to graveyield-protocol/sdk/src) is excluded ("Scope:
+      # 7 of 8 workspace projects" — verified 2026-10-25). Every root-level
+      # gate therefore runs explicitly with -w. A bare `pnpm -r test` in CI
+      # would silently skip 116 of the 354 tests.
+      - name: Build (root SDK mirror, then all workspace packages)
+        run: |
+          pnpm -w run build
+          pnpm -r build
+      - name: Typecheck (root + packages)
+        run: |
+          pnpm -w run typecheck
+          pnpm -r typecheck
+      - name: Lint (eslint)
+        run: pnpm lint
+      - name: Format (prettier check)
+        run: pnpm fmt:ts:check
+      - name: Test (root SDK suite, then all workspace suites)
+        run: |
+          pnpm -w test
+          pnpm -r test
