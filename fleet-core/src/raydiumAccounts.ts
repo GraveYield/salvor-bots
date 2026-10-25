@@ -33,6 +33,7 @@ import { PublicKey } from "@solana/web3.js";
 import {
   RAYDIUM_V4_AMM_AUTHORITY,
   RAYDIUM_V4_PROGRAM_ID,
+  findProgramAddressSync,
   raydiumV4RemainingAccounts,
   type V4PoolAccount,
 } from "@graveyield/sdk";
@@ -178,7 +179,7 @@ export async function deriveV4CpiAccounts(
 
   // --- Market-owned side accounts.
   const vaultSignerSeeds = [Buffer.from("vault-signer"), market.toBytes()];
-  const [marketVaultSigner] = PublicKey.findProgramAddressSync(vaultSignerSeeds, marketProgram);
+  const [marketVaultSigner] = findProgramAddressSync(vaultSignerSeeds, marketProgram);
   // OpenOrders / event queue / bids / asks are owned by the MARKET program.
   for (const [address, what] of [
     [openOrders, "amm_open_orders"],

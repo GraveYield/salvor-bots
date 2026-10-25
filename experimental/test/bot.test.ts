@@ -27,13 +27,13 @@ import { buildWorld } from "../../fleet-core/test/world.js";
 const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
 
-function makeBot(opts?: {
+async function makeBot(opts?: {
   mode?: "dry-run" | "simulation" | "live";
   riskCaps?: Partial<typeof DEFAULT_RISK_CAPS>;
   salvorLpAmount?: bigint;
   experimentId?: string;
 }) {
-  const w = buildWorld({
+  const w = await buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
     lpSupply: 10_000_000n,
@@ -50,7 +50,7 @@ function makeBot(opts?: {
     slippageBps: req.slippageBps,
     routeData: Uint8Array.from([1]),
     routeAccounts: [
-      { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
+      { pubkey: (await Keypair.generate()).publicKey, isSigner: false, isWritable: false },
       {
         pubkey: getAssociatedTokenAddressSync(
           WSOL_MINT,
@@ -94,7 +94,7 @@ function makeBot(opts?: {
     store,
     sink,
     signer: w.salvor,
-    attestationSource: new LocalAttestationSource(Keypair.generate()),
+    attestationSource: new LocalAttestationSource(await Keypair.generate()),
     now: NOW,
   });
   return { w, bot, sink, store };
@@ -118,7 +118,7 @@ function envelope(w: ReturnType<typeof buildWorld>) {
 describe("Experimental — risk caps (hard, fail-closed)", () => {
   test("a fee budget above the experiment cap is rejected risk-cap-exceeded", async () => {
     // Profit 0.36 SOL × margin 0.2 = 0.072 SOL D3 budget > 0.02 SOL cap.
-    const { w, bot } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 20_000_000n } });
+    const { w, bot } = await makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 20_000_000n } });
     const out = await bot.processEnvelope(envelope(w));
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "risk-cap-exceeded");
@@ -126,7 +126,7 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
   });
 
   test("a generous cap lets the same opportunity through (caps are the knob)", async () => {
-    const { w, bot } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
+    const { w, bot } = await makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
     const out = await bot.processEnvelope(envelope(w));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
   });
@@ -134,7 +134,7 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
   test("an LP position above the fraction cap is rejected", async () => {
     // 5M of 10M supply = 50% > 20% cap. The fee cap is raised so the
     // LP cap is the binding constraint here.
-    const { w, bot } = makeBot({
+    const { w, bot } = await makeBot({
       salvorLpAmount: 5_000_000n,
       riskCaps: { maxPriorityFeeBudgetLamports: 400_000_000n },
     });
@@ -145,7 +145,7 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
   });
 
   test("the caps are evaluated BEFORE simulation (no wasted exposure)", async () => {
-    const { w, bot, sink } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 1n } });
+    const { w, bot, sink } = await makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 1n } });
     await bot.processEnvelope(envelope(w));
     assert.equal(
       sink.where((e) => e.type === "simulated").length,
@@ -157,7 +157,7 @@ describe("Experimental — risk caps (hard, fail-closed)", () => {
 
 describe("Experimental — attribution + isolation", () => {
   test("every event carries the experiment id + risk-caps block", async () => {
-    const { w, bot, sink } = makeBot({ experimentId: "exp-42" });
+    const { w, bot, sink } = await makeBot({ experimentId: "exp-42" });
     await bot.processEnvelope(envelope(w));
     // Strategy-level events (emitted by the bot itself, not the shared
     // engine) all carry the attribution block.
@@ -183,7 +183,7 @@ describe("Experimental — attribution + isolation", () => {
   });
 
   test("experimental runs in its own store namespace (botId), so no cross-contamination", async () => {
-    const { w, bot, store } = makeBot();
+    const { w, bot, store } = await makeBot();
     await bot.processEnvelope(envelope(w));
     const key = `localnet|675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8|${w.poolAddress.toBase58()}`;
     assert.ok(await store.getExecution(key, "experimental"));
@@ -193,14 +193,14 @@ describe("Experimental — attribution + isolation", () => {
 
 describe("Experimental — never-weaken guarantees", () => {
   test("dry-run (default) never submits", async () => {
-    const { w, bot } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
+    const { w, bot } = await makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
     const out = await bot.processEnvelope(envelope(w));
     assert.ok(out.ok);
     assert.equal(w.rpc.sentTransactions.length, 0);
   });
 
   test("protocol eligibility is still enforced: an expired cert cannot be salvaged", async () => {
-    const { w } = makeBot();
+    const { w } = await makeBot();
     // Expire the cert: delete it and install an EXPIRED one.
     w.rpc.deleteAccount(w.certPda);
     const { encodeCert, SCANNER_ID } = await import("../../fleet-core/test/helpers.js");
@@ -216,7 +216,7 @@ describe("Experimental — never-weaken guarantees", () => {
       }),
       new PublicKey(SCANNER_ID),
     );
-    const { bot } = makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
+    const { bot } = await makeBot({ riskCaps: { maxPriorityFeeBudgetLamports: 100_000_000n } });
     const out = await bot.processEnvelope(envelope(w));
     assert.ok(
       out.ok,

@@ -81,11 +81,11 @@ export function parseArgs(argv: readonly string[]): Record<string, string | bool
 }
 
 /** Wire the full fleet service. Exported for tests. */
-export function wireFleet(config: FleetOpsConfig): {
+export async function wireFleet(config: FleetOpsConfig): Promise<{
   runner: FleetRunner;
   health: HealthRegistry;
   alerts: AlertManager;
-} {
+}> {
   const health = new HealthRegistry("graveyield-fleet");
   const sinks: AlertSink[] = [
     new ConsoleAlertSink(),
@@ -111,7 +111,7 @@ export function wireFleet(config: FleetOpsConfig): {
     ...(scoutConfig.reportFile !== null ? [new JsonlFileReportSink(scoutConfig.reportFile)] : []),
     bridgeSink,
   ];
-  const scout = buildScout(scoutConfig, { sinks: scoutSinks });
+  const scout = await buildScout(scoutConfig, { sinks: scoutSinks });
 
   const monitor = new FleetMonitor({
     client: scout.client,
@@ -145,7 +145,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   switch (cmd) {
     case "run": {
-      const { runner, health } = wireFleet(config);
+      const { runner, health } = await wireFleet(config);
       const stop = runner.start();
       const shutdown = (): void => {
         stop();
@@ -158,20 +158,20 @@ export async function main(argv: readonly string[]): Promise<number> {
       return new Promise(() => {}) as unknown as number;
     }
     case "cycle": {
-      const { runner, health } = wireFleet(config);
+      const { runner, health } = await wireFleet(config);
       const result = await runner.runScoutCycle();
       console.log(JSON.stringify(result, null, 2));
       void health;
       return 0;
     }
     case "sweep": {
-      const { runner } = wireFleet(config);
+      const { runner } = await wireFleet(config);
       const diagnostics = runner.runMonitorSweep();
       console.log(JSON.stringify(diagnostics, null, 2));
       return 0;
     }
     case "health": {
-      const { health } = wireFleet(config);
+      const { health } = await wireFleet(config);
       console.log(health.render());
       return 0;
     }

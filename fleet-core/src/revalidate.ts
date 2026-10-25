@@ -179,7 +179,8 @@ export async function revalidateOpportunity(opts: {
   // --- Current kind from LIVE state (the envelope's kind is context).
   let currentEpoch: number;
   try {
-    currentEpoch = opts.options?.currentEpoch ?? (await client.connection.getEpochInfo()).epoch;
+    currentEpoch =
+      opts.options?.currentEpoch ?? Number((await client.connection.getEpochInfo()).epoch);
   } catch (err) {
     return {
       ok: false,

@@ -358,7 +358,9 @@ export class ExecutionPipeline {
     // SPL token account: amount @ 64 (u64 LE).
     const data = info.data;
     if (data.length < 72) throw new Error(`salvor LP ATA ${ata.toBase58()} too short`);
-    return data.readBigUInt64LE(64);
+    // web3.js 3.x returns AccountInfo<Uint8Array>; Buffer.from copies the
+    // same bytes so the u64 read keeps working.
+    return Buffer.from(data).readBigUInt64LE(64);
   }
 
   /**
@@ -674,7 +676,7 @@ export class ExecutionPipeline {
   }): Promise<PreparedTransaction> {
     const { rv } = opts;
     const connection = this.client.connection;
-    const issuedSlot = await connection.getSlot();
+    const issuedSlot = Number(await connection.getSlot());
     const slotHash = await fetchSlotHash(connection, issuedSlot);
     if (!slotHash) {
       throw new Error(

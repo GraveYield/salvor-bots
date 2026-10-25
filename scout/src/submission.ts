@@ -128,7 +128,7 @@ export async function buildPhase1Transaction(opts: {
   writer: PublicKey;
   fee: FeeSettings;
 }): Promise<Phase1TxBundle> {
-  const issuedSlot = await opts.connection.getSlot();
+  const issuedSlot = Number(await opts.connection.getSlot());
   const slotHash = await fetchSlotHash(opts.connection, issuedSlot);
   if (!slotHash) {
     throw new Error(
@@ -200,7 +200,7 @@ export async function buildRecordLaunchPriceTransaction(opts: {
   payer: PublicKey;
   fee: FeeSettings;
 }): Promise<RecordLaunchPriceTxBundle> {
-  const issuedSlot = await opts.connection.getSlot();
+  const issuedSlot = Number(await opts.connection.getSlot());
 
   const attestationMessage = buildLaunchPriceMessage({
     ammProgramId: RAYDIUM_V4_PROGRAM_ID,

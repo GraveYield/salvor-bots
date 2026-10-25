@@ -28,13 +28,13 @@ const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
 
 /** Default-conservative world + pipeline + bot wiring. */
-function makeBot(opts?: {
+async function makeBot(opts?: {
   mode?: "dry-run" | "simulation" | "live";
   tunables?: Record<string, unknown>;
   routeQuotedAtMs?: number;
   minNetProfitLamports?: bigint;
 }) {
-  const w = buildWorld({
+  const w = await buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
     lpSupply: 10_000_000n,
@@ -51,7 +51,7 @@ function makeBot(opts?: {
     slippageBps: req.slippageBps,
     routeData: Uint8Array.from([0xbe, 0xef]),
     routeAccounts: [
-      { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
+      { pubkey: (await Keypair.generate()).publicKey, isSigner: false, isWritable: false },
       {
         pubkey: getAssociatedTokenAddressSync(
           WSOL_MINT,
@@ -85,7 +85,7 @@ function makeBot(opts?: {
     txSender: w.rpc.fakeSend.bind(w.rpc),
     now: NOW,
   });
-  const oracle = Keypair.generate();
+  const oracle = await Keypair.generate();
   const bot = new ConservativeSalvor({
     config: {
       cluster: "localnet",
@@ -141,7 +141,7 @@ function certificationReadyEnvelope(w: ReturnType<typeof buildWorld>) {
 
 describe("Conservative — dry-run (default mode)", () => {
   test("salvageable path: full pass, nothing submitted, reported dry-run", async () => {
-    const { w, bot, sink } = makeBot();
+    const { w, bot, sink } = await makeBot();
     const out = await bot.processEnvelope(salvageableEnvelope(w));
     assert.ok(out.admitted);
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
@@ -156,7 +156,7 @@ describe("Conservative — dry-run (default mode)", () => {
 
   test("certification-ready path: prepare + simulate the ATOMIC certify-and-salvage bundle", async () => {
     // Delete the world's cert → the pool is genuinely certification-ready.
-    const { w, bot, sink } = makeBot();
+    const { w, bot, sink } = await makeBot();
     w.rpc.deleteAccount(w.certPda);
     const out = await bot.processEnvelope(certificationReadyEnvelope(w));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
@@ -177,7 +177,7 @@ describe("Conservative — dry-run (default mode)", () => {
   });
 
   test("kind flip: a certification-ready envelope whose cert ALREADY exists is executed salvage-only (no phase-2 re-issue)", async () => {
-    const { w, bot, sink } = makeBot();
+    const { w, bot, sink } = await makeBot();
     const out = await bot.processEnvelope(certificationReadyEnvelope(w));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
     const prepared = sink.where(
@@ -195,7 +195,7 @@ describe("Conservative — dry-run (default mode)", () => {
   });
 
   test("duplicate delivery is suppressed (idempotent consumption)", async () => {
-    const { w, bot } = makeBot();
+    const { w, bot } = await makeBot();
     const env = salvageableEnvelope(w);
     const first = await bot.processEnvelope(env);
     const second = await bot.processEnvelope(env);
@@ -205,7 +205,7 @@ describe("Conservative — dry-run (default mode)", () => {
   });
 
   test("stale sighting (older than maxOpportunityAgeMs) is rejected before revalidation", async () => {
-    const { w, bot } = makeBot();
+    const { w, bot } = await makeBot();
     const env = salvageableEnvelope(w);
     env.provenance.detectedAtMs = FIXED_NOW_MS - 10 * 3_600_000; // 10h old > 6h window
     const out = await bot.processEnvelope(env);
@@ -216,12 +216,12 @@ describe("Conservative — dry-run (default mode)", () => {
 
 describe("Conservative — strategy shape", () => {
   test("the conservative minimum (0.05 SOL) rejects marginal economics", async () => {
-    const { w, bot } = makeBot({ minNetProfitLamports: 50_000_000n });
+    const { w, bot } = await makeBot({ minNetProfitLamports: 50_000_000n });
     // World economics: net ≈ 0.36 SOL minus costs — well above 0.05 SOL.
     const good = await bot.processEnvelope(salvageableEnvelope(w));
     assert.ok(good.ok, good.reason);
     // A bot demanding 10 SOL net rejects the same 0.36 SOL opportunity.
-    const { w: w2, bot: bot2 } = makeBot({ minNetProfitLamports: 10_000_000_000n });
+    const { w: w2, bot: bot2 } = await makeBot({ minNetProfitLamports: 10_000_000_000n });
     const out = await bot2.processEnvelope(salvageableEnvelope(w2));
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "economic-insufficient");
@@ -236,7 +236,7 @@ describe("Conservative — strategy shape", () => {
 
 describe("Conservative — coordination + records", () => {
   test("a second bot instance is denied the lease while the first holds it", async () => {
-    const { w, bot, store } = makeBot();
+    const { w, bot, store } = await makeBot();
     const env = salvageableEnvelope(w);
     // A phantom holder keeps the lease.
     await store.acquireLease(opportunityKey(env.identity), "sniper", 120_000);
@@ -247,14 +247,14 @@ describe("Conservative — coordination + records", () => {
   });
 
   test("restart safety: execution records persist in the store across bot instances", async () => {
-    const { w, bot, store } = makeBot();
+    const { w, bot, store } = await makeBot();
     const env = salvageableEnvelope(w);
     await bot.processEnvelope(env);
     const record = await store.getExecution(opportunityKey(env.identity), "conservative");
     assert.ok(record);
     assert.ok(record.transitions.length > 0);
     // A NEW bot instance (restart) with the SAME store sees the delivery.
-    const { bot: bot2 } = makeBot();
+    const { bot: bot2 } = await makeBot();
     const bot2withStore = new ConservativeSalvor({
       config: { cluster: "localnet", mode: "dry-run", retryBackoffMs: 1 },
       client: w.client,
@@ -269,7 +269,7 @@ describe("Conservative — coordination + records", () => {
   });
 
   test("cycle summary aggregates duplicates and failures", async () => {
-    const { w, bot } = makeBot({ minNetProfitLamports: 10_000_000_000n }); // everything rejects
+    const { w, bot } = await makeBot({ minNetProfitLamports: 10_000_000_000n }); // everything rejects
     const env = salvageableEnvelope(w);
     const cycle = await bot.runOnce([env, env]);
     assert.equal(cycle.received, 2);
@@ -281,7 +281,7 @@ describe("Conservative — coordination + records", () => {
 
 describe("Conservative — live mode", () => {
   test("live mode submits exactly once and reports the confirmed signature", async () => {
-    const { w, bot, sink } = makeBot({ mode: "live" });
+    const { w, bot, sink } = await makeBot({ mode: "live" });
     const out = await bot.processEnvelope(salvageableEnvelope(w));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
     assert.ok(out.signature);
@@ -294,7 +294,7 @@ describe("Conservative — live mode", () => {
   });
 
   test("live construction without a signer is refused", async () => {
-    const { w } = makeBot({ mode: "live" });
+    const { w } = await makeBot({ mode: "live" });
     const { ExecutionPipeline: P } = await import("@graveyield/fleet-core");
     const pipeline = new P({
       client: w.client,
@@ -332,7 +332,7 @@ describe("Conservative — live mode", () => {
   });
 
   test("send failure retries up to maxSubmitAttempts then fails terminal", async () => {
-    const { w, bot, sink } = makeBot({ mode: "live" });
+    const { w, bot, sink } = await makeBot({ mode: "live" });
     w.rpc.sendError = new Error("RPC boom");
     const out = await bot.processEnvelope(salvageableEnvelope(w));
     assert.ok(!out.ok);

@@ -163,7 +163,7 @@ describe("ADV-FLEET — competing Salvors at the coordination layer", () => {
 
 describe("ADV-FLEET — mid-flight state manipulation", () => {
   test("ADV-TS: an anchor invalidated BETWEEN checks flips a live opportunity to refused", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -204,7 +204,7 @@ describe("ADV-FLEET — mid-flight state manipulation", () => {
   });
 
   test("ADV-CE: a cert about to expire inside the strategy margin is refused cert-expired", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -221,7 +221,7 @@ describe("ADV-FLEET — mid-flight state manipulation", () => {
     assert.ok(!out.ok);
     assert.equal(out.ok ? null : out.failureClass, "cert-expired");
     // One second more and the same cert is actionable — the margin is exact.
-    const w2 = buildWorld({
+    const w2 = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,

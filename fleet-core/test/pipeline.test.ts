@@ -1,3 +1,12 @@
+// web3.js 3.x removed the 1.x `PublicKey.unique()` helper; a counter-seeded
+// sha256 keygen keeps the route fixtures deterministic and synchronous.
+let uniqueKeyCounter = 0;
+function uniquePublicKey(): PublicKey {
+  return new PublicKey(
+    createHash("sha256").update(`pipeline-fixture-${uniqueKeyCounter++}`).digest(),
+  );
+}
+
 // SPDX-License-Identifier: Apache-2.0
 //
 // Execution pipeline tests (FLEET-M1) — transaction-shape regression,
@@ -9,6 +18,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { createHash } from "node:crypto";
 import BN from "bn.js";
 
 import {
@@ -57,7 +67,7 @@ function healthyRouteAdapter() {
     slippageBps: req.slippageBps,
     routeData: Uint8Array.from([0xde, 0xad, 0xbe, 0xef]),
     routeAccounts: [
-      { pubkey: PublicKey.unique(), isSigner: false, isWritable: false },
+      { pubkey: uniquePublicKey(), isSigner: false, isWritable: false },
       {
         pubkey: getAssociatedTokenAddressSync(WSOL_MINT, vaultAuthorityPda(VAULT_ID), true),
         isSigner: false,
@@ -120,14 +130,14 @@ function salvageableEnvelope(world: ReturnType<typeof buildWorld>) {
 
 describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
   test("prepares the atomic [cuLimit, cuPrice, precompile(2), phase2(3), salvage(4)] bundle with the index pinned", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
       salvorLpAmount: 1_000_000n,
     });
     const { pipeline } = makePipeline({ world: w });
-    const oracle = KeypairShim();
+    const oracle = await KeypairShim();
     const out = await pipeline.prepare({
       envelope: certificationReadyEnvelope(w),
       salvor: w.salvor.publicKey,
@@ -176,7 +186,7 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
   });
 
   test("dry-run NEVER submits: mode gate throws before any send", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -202,7 +212,7 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
   });
 
   test("economic minimum rejects unprofitable opportunities before assembly", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -224,7 +234,7 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
 
 describe("ExecutionPipeline — salvageable path (dry-run)", () => {
   test("prepares [cuLimit, cuPrice, salvage] with no precompile and no phase-2 re-issue", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -251,7 +261,7 @@ describe("ExecutionPipeline — salvageable path (dry-run)", () => {
 
 describe("ExecutionPipeline — safety gates", () => {
   test("stale quote is rejected route-failure", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -286,7 +296,7 @@ describe("ExecutionPipeline — safety gates", () => {
   });
 
   test("missing route accounts (no vault WSOL destination) fail closed", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -315,7 +325,7 @@ describe("ExecutionPipeline — safety gates", () => {
   });
 
   test("LP supply moving after the snapshot fails closed (state-changed, 7018 caught early)", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -352,7 +362,7 @@ describe("ExecutionPipeline — safety gates", () => {
   });
 
   test("salvor without LP fails closed (missing-accounts)", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -370,7 +380,7 @@ describe("ExecutionPipeline — safety gates", () => {
   });
 
   test("certification-ready without an AttestationSource is config-invalid (no silent skip)", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -389,7 +399,7 @@ describe("ExecutionPipeline — safety gates", () => {
 
 describe("ExecutionPipeline — simulation + submission", () => {
   test("simulate passes on a healthy world and carries unitsConsumed", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -408,7 +418,7 @@ describe("ExecutionPipeline — simulation + submission", () => {
   });
 
   test("a failing simulation decodes the GraveYield error and refuses", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -433,7 +443,7 @@ describe("ExecutionPipeline — simulation + submission", () => {
   });
 
   test("live mode submits through the injected sender and reads the salvage receipt", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -497,7 +507,7 @@ describe("ExecutionPipeline — simulation + submission", () => {
   });
 
   test("submitted fee respects the D3 budget (price ix ≤ plan.max × cuLimit)", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -526,14 +536,18 @@ describe("ExecutionPipeline — simulation + submission", () => {
     // data = [tag=3][u64 LE micro-lamports] (SetComputeUnitLimit = tag 2).
     const priceIx = p.tx.instructions[1]!;
     assert.equal(priceIx.data[0], 3);
-    assert.equal(priceIx.data.readBigUInt64LE(1), BigInt(p.feeMicroLamportsPerCu.toString()));
+    // 3.x instruction data is Uint8Array; Buffer.from copies the same bytes.
+    assert.equal(
+      Buffer.from(priceIx.data).readBigUInt64LE(1),
+      BigInt(p.feeMicroLamportsPerCu.toString()),
+    );
   });
 });
 
 // throwaway keypair shim (no secrets material in tests)
 import { Keypair } from "@solana/web3.js";
 import { TOKEN_PROGRAM } from "./helpers.js";
-function KeypairShim(): Keypair {
+async function KeypairShim(): Promise<Keypair> {
   return Keypair.generate();
 }
 

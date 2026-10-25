@@ -58,7 +58,7 @@ const LP_ORACLE: OracleIdentity = (() => {
   const kp = nacl.sign.keyPair.fromSeed(new Uint8Array(32).map((_, i) => (i * 17 + 2) & 0xff));
   return { secretKey64: new Uint8Array(kp.secretKey), publicKey: new PublicKey(kp.publicKey) };
 })();
-const OPERATOR = Keypair.generate();
+const OPERATOR = await Keypair.generate();
 
 const realNowSec = () => BigInt(Math.floor(Date.now() / 1000));
 
@@ -260,7 +260,7 @@ describe("ScoutSalvor end-to-end (fake RPC)", () => {
       const precompile = tx.instructions[2];
       const scannerIx = tx.instructions[3];
       assert.ok(scannerIx?.programId.equals(SCANNER));
-      assert.equal(precompile?.data.readUInt16LE(14), 3);
+      assert.equal(precompile && Buffer.from(precompile.data).readUInt16LE(14), 3);
     }
 
     // The anchor was materialized at the canonical PDA.
@@ -476,7 +476,7 @@ describe("ScoutSalvor end-to-end (fake RPC)", () => {
       reportFile: null,
       runOnce: true,
     };
-    const scout = buildScout(config, {
+    const scout = await buildScout(config, {
       connection: fake.asConnection(),
       sinks: sinks as never,
     });

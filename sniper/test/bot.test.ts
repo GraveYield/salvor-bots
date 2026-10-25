@@ -26,8 +26,8 @@ import { buildWorld } from "../../fleet-core/test/world.js";
 const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
 
-function makeBot(opts?: { mode?: "dry-run" | "simulation" | "live"; quoteAt?: number }) {
-  const w = buildWorld({
+async function makeBot(opts?: { mode?: "dry-run" | "simulation" | "live"; quoteAt?: number }) {
+  const w = await buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
     lpSupply: 10_000_000n,
@@ -44,7 +44,7 @@ function makeBot(opts?: { mode?: "dry-run" | "simulation" | "live"; quoteAt?: nu
     slippageBps: req.slippageBps,
     routeData: Uint8Array.from([1]),
     routeAccounts: [
-      { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
+      { pubkey: (await Keypair.generate()).publicKey, isSigner: false, isWritable: false },
       {
         pubkey: getAssociatedTokenAddressSync(
           WSOL_MINT,
@@ -86,7 +86,7 @@ function makeBot(opts?: { mode?: "dry-run" | "simulation" | "live"; quoteAt?: nu
     store,
     sink,
     signer: w.salvor,
-    attestationSource: new LocalAttestationSource(Keypair.generate()),
+    attestationSource: new LocalAttestationSource(await Keypair.generate()),
     now: NOW,
   });
   return { w, bot, sink, store };
@@ -112,9 +112,9 @@ function envelope(
 
 describe("Sniper — urgency ordering", () => {
   test("soonest cert expiry is processed FIRST (the clock decides priority)", async () => {
-    const { w, bot, sink } = makeBot();
+    const { w, bot, sink } = await makeBot();
     // Three DISTINCT pools in one world family (per-pool derivation keys).
-    const poolSoon = buildWorld({
+    const poolSoon = await buildWorld({
       poolSeed: 0x51,
       wsolReserve: 1_000_000_000n,
       memecoinReserve: 100n,
@@ -122,7 +122,7 @@ describe("Sniper — urgency ordering", () => {
       salvorLpAmount: 0n,
       certExpiresAt: NOW_SEC + 300n,
     });
-    const poolLate = buildWorld({
+    const poolLate = await buildWorld({
       poolSeed: 0x52,
       wsolReserve: 1_000_000_000n,
       memecoinReserve: 100n,
@@ -130,7 +130,7 @@ describe("Sniper — urgency ordering", () => {
       salvorLpAmount: 0n,
       certExpiresAt: NOW_SEC + 3_500n,
     });
-    const poolNoCert = buildWorld({
+    const poolNoCert = await buildWorld({
       poolSeed: 0x53,
       wsolReserve: 1_000_000_000n,
       memecoinReserve: 100n,
@@ -160,8 +160,8 @@ describe("Sniper — urgency ordering", () => {
     );
   });
 
-  test("ties break by score, then freshness", () => {
-    const { w } = makeBot();
+  test("ties break by score, then freshness", async () => {
+    const { w } = await makeBot();
     const a = envelope(w, { certExpiresAt: NOW_SEC + 600n, score: 0.2 });
     const b = envelope(w, { certExpiresAt: NOW_SEC + 600n, score: 0.9 });
     assert.equal(byCertUrgency(b, a) < 0, true, "higher score first on expiry ties");
@@ -170,7 +170,7 @@ describe("Sniper — urgency ordering", () => {
 
 describe("Sniper — windows + strategy shape", () => {
   test("the 5s quote window rejects quotes Conservative would accept", async () => {
-    const { w, bot } = makeBot({ quoteAt: NOW() - 6_000 }); // 6s old
+    const { w, bot } = await makeBot({ quoteAt: NOW() - 6_000 }); // 6s old
     const out = await bot.processEnvelope(envelope(w, { certExpiresAt: NOW_SEC + 3_600n }));
     assert.ok(!out.ok);
     assert.equal(out.failureClass, "route-failure");
@@ -188,14 +188,14 @@ describe("Sniper — windows + strategy shape", () => {
 
 describe("Sniper — safety parity", () => {
   test("dry-run (default) never submits, even with an expiring cert", async () => {
-    const { w, bot } = makeBot();
+    const { w, bot } = await makeBot();
     const out = await bot.processEnvelope(envelope(w, { certExpiresAt: NOW_SEC + 120n }));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
     assert.equal(w.rpc.sentTransactions.length, 0);
   });
 
   test("live mode submits through the SAME pipeline and simulates first", async () => {
-    const { w, bot, sink } = makeBot({ mode: "live" });
+    const { w, bot, sink } = await makeBot({ mode: "live" });
     const out = await bot.processEnvelope(envelope(w, { certExpiresAt: NOW_SEC + 3_600n }));
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
     assert.equal(w.rpc.sentTransactions.length, 1);
@@ -206,7 +206,7 @@ describe("Sniper — safety parity", () => {
   });
 
   test("cross-bot lease: the sniper is denied while conservative holds the lease", async () => {
-    const { w, bot, store } = makeBot();
+    const { w, bot, store } = await makeBot();
     const env = envelope(w, { certExpiresAt: NOW_SEC + 3_600n });
     await store.acquireLease(opportunityKey(env.identity), "conservative", 120_000);
     const out = await bot.processEnvelope(env);

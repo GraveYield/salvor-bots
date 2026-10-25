@@ -48,12 +48,12 @@ const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
 const AMM = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 
 /** The full fleet harness: shared store, per-bot sinks, one pipeline each. */
-function fleet(opts?: {
+async function fleet(opts?: {
   mode?: "dry-run" | "simulation" | "live";
   routeOut?: bigint;
   failFirstSends?: number;
 }) {
-  const w = buildWorld({
+  const w = await buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
     lpSupply: 10_000_000n,
@@ -81,7 +81,7 @@ function fleet(opts?: {
       slippageBps: req.slippageBps,
       routeData: Uint8Array.from([1, 2]),
       routeAccounts: [
-        { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
+        { pubkey: (await Keypair.generate()).publicKey, isSigner: false, isWritable: false },
         {
           pubkey: getAssociatedTokenAddressSync(
             WSOL_MINT,
@@ -127,7 +127,7 @@ function fleet(opts?: {
     store: sharedStore,
     sink: fleetSink,
     signer: w.salvor,
-    attestationSource: new LocalAttestationSource(Keypair.generate()),
+    attestationSource: new LocalAttestationSource(await Keypair.generate()),
     now: NOW,
   });
   const sniper = new SniperSalvor({
@@ -142,7 +142,7 @@ function fleet(opts?: {
     store: sharedStore,
     sink: fleetSink,
     signer: w.salvor,
-    attestationSource: new LocalAttestationSource(Keypair.generate()),
+    attestationSource: new LocalAttestationSource(await Keypair.generate()),
     now: NOW,
   });
   const experimental = new ExperimentalSalvor({
@@ -162,7 +162,7 @@ function fleet(opts?: {
     store: sharedStore,
     sink: fleetSink,
     signer: w.salvor,
-    attestationSource: new LocalAttestationSource(Keypair.generate()),
+    attestationSource: new LocalAttestationSource(await Keypair.generate()),
     now: NOW,
   });
   const monitor = new FleetMonitor({
@@ -192,7 +192,7 @@ function fleet(opts?: {
 
 describe("fleet integration — dry-run (whole-fleet observation)", () => {
   test("all three executors observe one opportunity; exactly one EXECUTES it; others are suppressed or lease-denied", async () => {
-    const f = fleet();
+    const f = await fleet();
     const env = f.envelopeFor();
     // The Scout "publishes" the same envelope to all three bots.
     const [c, s, e] = await Promise.all([
@@ -228,7 +228,7 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
   });
 
   test("replaying the entire fleet event log into the Monitor is side-effect-free", async () => {
-    const f = fleet();
+    const f = await fleet();
     const env = f.envelopeFor();
     await f.conservative.processEnvelope(env);
     for (const ev of f.fleetSink.events) f.monitor.observeFleetEvent(ev);
@@ -239,7 +239,7 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
   });
 
   test("a stale certificate flips the whole fleet to the certification-ready path", async () => {
-    const f = fleet();
+    const f = await fleet();
     // Expire + delete the cert — revalidation must flip the kind.
     f.w.rpc.deleteAccount(f.w.certPda);
     const env = buildEnvelope({
@@ -266,7 +266,7 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
   });
 
   test("failed simulations are terminal per bot but never submitted", async () => {
-    const f = fleet();
+    const f = await fleet();
     // A GraveVault error on every simulation; TWO distinct sightings of
     // the same opportunity fail the same way (repeated failures escalate).
     f.w.rpc.simulationResult = {
@@ -290,7 +290,7 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
   });
 
   test("a transient route failure retries and RECOVERS within the same pass", async () => {
-    const f = fleet({ failFirstSends: 0, routeOut: 4_000_000_000n });
+    const f = await fleet({ failFirstSends: 0, routeOut: 4_000_000_000n });
     // Sabotage: make the FIRST quote throw, then succeed.
     f.w.rpc.getAccountInfo = new Proxy(f.w.rpc.getAccountInfo.bind(f.w.rpc), {});
     const originalQuote = f.fleetSink; // unused; the route is closed over — inject via sendError? RouteError path is in the adapter.
@@ -307,7 +307,7 @@ describe("fleet integration — dry-run (whole-fleet observation)", () => {
 
 describe("fleet integration — live settlement reconciliation", () => {
   test("one live salvage lands; the Monitor reconciles the 40/40/20 receipt", async () => {
-    const f = fleet({ mode: "live" });
+    const f = await fleet({ mode: "live" });
     const env = f.envelopeFor();
     const out = await f.conservative.processEnvelope(env);
     assert.ok(out.ok, `${out.failureClass} ${out.reason}`);
@@ -339,7 +339,7 @@ describe("fleet integration — live settlement reconciliation", () => {
   });
 
   test("two bots racing one opportunity in live mode: the lease guarantees a single submission", async () => {
-    const f = fleet({ mode: "live" });
+    const f = await fleet({ mode: "live" });
     const env = f.envelopeFor();
     // Sequential: conservative takes the lease and completes it; the
     // sniper's identical delivery is then suppressed by the store (same
@@ -358,7 +358,7 @@ describe("fleet integration — live settlement reconciliation", () => {
   });
 
   test("restart safety: a NEW fleet instance over the SAME store suppresses reprocessing", async () => {
-    const f = fleet({ mode: "live" });
+    const f = await fleet({ mode: "live" });
     const env = f.envelopeFor();
     await f.conservative.processEnvelope(env);
     // "Restart": fresh bot instances over the same store.

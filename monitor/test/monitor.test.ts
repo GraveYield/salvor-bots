@@ -56,12 +56,12 @@ function eventAt(
   });
 }
 
-function makeMonitor(now: () => number, cfg?: MonitorConfig) {
+async function makeMonitor(now: () => number, cfg?: MonitorConfig) {
   const sink = new MemoryEventSink();
   const client = new GraveYieldClient({
     connection: {} as never, // ingestion + diagnose never touch the chain
     cluster: "localnet",
-    graveScannerProgramId: Keypair.generate().publicKey,
+    graveScannerProgramId: (await Keypair.generate()).publicKey,
     graveVaultProgramId: new PublicKey(VAULT_ID),
   });
   const monitor = new FleetMonitor({ client, config: cfg ?? config({ now }), sink });
@@ -69,9 +69,9 @@ function makeMonitor(now: () => number, cfg?: MonitorConfig) {
 }
 
 describe("event ingestion + lifecycle tracking", () => {
-  test("a full executor story folds into one observation", () => {
+  test("a full executor story folds into one observation", async () => {
     const now = () => 10_000;
-    const { monitor } = makeMonitor(now);
+    const { monitor } = await makeMonitor(now);
     const env = buildEnvelope({
       identity: IDENTITY,
       kind: "salvageable",
@@ -115,9 +115,9 @@ describe("event ingestion + lifecycle tracking", () => {
     assert.equal(obs.reportedReceipt?.totalProceedsLamports, "900000000");
   });
 
-  test("replaying the same recorded events is side-effect-free (replayable tests)", () => {
+  test("replaying the same recorded events is side-effect-free (replayable tests)", async () => {
     const now = () => 10_000;
-    const { monitor } = makeMonitor(now);
+    const { monitor } = await makeMonitor(now);
     const env = buildEnvelope({
       identity: IDENTITY,
       kind: "salvageable",
@@ -136,8 +136,8 @@ describe("event ingestion + lifecycle tracking", () => {
     assert.equal(JSON.stringify(monitor.snapshot()), first);
   });
 
-  test("scout events are tracked on their own channel", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("scout events are tracked on their own channel", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     monitor.observeScoutEvent({
       tsMs: 1,
       type: "opportunity:certification-ready",
@@ -150,9 +150,9 @@ describe("event ingestion + lifecycle tracking", () => {
 });
 
 describe("anomaly diagnostics", () => {
-  test("stale opportunity (no activity, no signature) is flagged", () => {
+  test("stale opportunity (no activity, no signature) is flagged", async () => {
     let now = 10_000;
-    const { monitor } = makeMonitor(() => now);
+    const { monitor } = await makeMonitor(() => now);
     monitor.observeFleetEvent(
       eventAt("conservative", "opportunity-received", 10_000, { kind: "salvageable" }),
     );
@@ -161,9 +161,9 @@ describe("anomaly diagnostics", () => {
     assert.ok(diags.some((d) => d.code === "stale-opportunity"));
   });
 
-  test("cert expiry: imminent and expired flags", () => {
+  test("cert expiry: imminent and expired flags", async () => {
     let now = 1_800_000_000_000;
-    const { monitor } = makeMonitor(() => now);
+    const { monitor } = await makeMonitor(() => now);
     // Cert expiring 5 minutes out → imminent.
     monitor.observeFleetEvent(
       eventAt("conservative", "revalidated", now, {
@@ -176,8 +176,8 @@ describe("anomaly diagnostics", () => {
     assert.ok(monitor.diagnose().some((d) => d.code === "cert-expired"));
   });
 
-  test("repeated attempts above the ceiling are flagged with bot attribution", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("repeated attempts above the ceiling are flagged with bot attribution", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     for (let i = 0; i < 4; i++) {
       monitor.observeFleetEvent(eventAt("conservative", "prepared", 1 + i));
     }
@@ -186,8 +186,8 @@ describe("anomaly diagnostics", () => {
     assert.deepEqual(diag.detail.bots, ["conservative"]);
   });
 
-  test("conflicting kind claims from two bots are flagged", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("conflicting kind claims from two bots are flagged", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     monitor.observeFleetEvent(
       eventAt("conservative", "opportunity-received", 1, { kind: "salvageable" }),
     );
@@ -197,8 +197,8 @@ describe("anomaly diagnostics", () => {
     assert.ok(monitor.diagnose().some((d) => d.code === "conflicting-claims"));
   });
 
-  test("confirmed-but-unverified is flagged until a receipt is reported", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("confirmed-but-unverified is flagged until a receipt is reported", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     monitor.observeFleetEvent(eventAt("conservative", "confirmed", 1, { signature: "SIG_X" }));
     assert.ok(monitor.diagnose().some((d) => d.code === "unverified-confirmation"));
     monitor.observeFleetEvent(
@@ -213,8 +213,8 @@ describe("anomaly diagnostics", () => {
     assert.ok(!monitor.diagnose().some((d) => d.code === "unverified-confirmation"));
   });
 
-  test("repeated non-transient failures escalate to critical", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("repeated non-transient failures escalate to critical", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     monitor.observeFleetEvent(
       eventAt(
         "conservative",
@@ -241,7 +241,7 @@ describe("anomaly diagnostics", () => {
 
 describe("on-chain reconciliation (read-only)", () => {
   test("receipt-verified: sums + shares + reported amounts match the chain", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -305,7 +305,7 @@ describe("on-chain reconciliation (read-only)", () => {
   });
 
   test("receipt-anomaly: a 50/30/20 split off-protocol is caught", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -340,7 +340,7 @@ describe("on-chain reconciliation (read-only)", () => {
   });
 
   test("receipt-missing: a claimed confirmation with no on-chain receipt", async () => {
-    const w = buildWorld({
+    const w = await buildWorld({
       wsolReserve: 5_000_000_000n,
       memecoinReserve: 1_000_000n,
       lpSupply: 10_000_000n,
@@ -360,8 +360,8 @@ describe("on-chain reconciliation (read-only)", () => {
     assert.equal(rec.status, "receipt-missing");
   });
 
-  test("the monitor instance holds no keypair and its API surface has no submit path", () => {
-    const { monitor } = makeMonitor(() => 1);
+  test("the monitor instance holds no keypair and its API surface has no submit path", async () => {
+    const { monitor } = await makeMonitor(() => 1);
     const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(monitor));
     assert.ok(!proto.some((n) => n.toLowerCase().includes("submit")));
     assert.ok(!proto.some((n) => n.toLowerCase().includes("sign")));

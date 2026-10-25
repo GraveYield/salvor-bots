@@ -624,7 +624,7 @@ export class ScoutSalvor {
  * Loads key material, wires the connection + sinks, and applies the
  * config's mode.
  */
-export function buildScout(
+export async function buildScout(
   config: ScoutConfig,
   overrides?: {
     sinks?: ReportSink[];
@@ -632,7 +632,7 @@ export function buildScout(
     txSender?: TxSender;
     operatorKeypair?: Keypair;
   },
-): ScoutSalvor {
+): Promise<ScoutSalvor> {
   const connection = overrides?.connection ?? new Connection(config.rpcUrl, "confirmed");
   const sinks =
     overrides?.sinks ??
@@ -643,7 +643,7 @@ export function buildScout(
 
   const operatorKeypair =
     overrides?.operatorKeypair ??
-    (config.salvorKeypair !== null ? loadSalvorKeypair(config.salvorKeypair) : null);
+    (config.salvorKeypair !== null ? await loadSalvorKeypair(config.salvorKeypair) : null);
 
   const fee: FeeSettings = {
     feeLamportsPerCu: config.feeLamportsPerCu,

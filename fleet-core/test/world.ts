@@ -72,7 +72,7 @@ export interface World {
 }
 
 /** Build the world. Returns everything a test needs. */
-export function buildWorld(opts: WorldOptions): World {
+export async function buildWorld(opts: WorldOptions): Promise<World> {
   const rpc = new FakeConnection();
   rpc.currentEpoch = opts.currentEpoch ?? 12;
 
@@ -198,9 +198,9 @@ export function buildWorld(opts: WorldOptions): World {
 
   // Salvor first, then holders whose Σ == lpSupply exactly (the
   // snapshot completeness gate hard-fails otherwise).
-  const salvor = Keypair.generate();
+  const salvor = await Keypair.generate();
   const salvorLpAta = getAssociatedTokenAddressSync(lpMint, salvor.publicKey);
-  const secondHolder = Keypair.generate().publicKey;
+  const secondHolder = (await Keypair.generate()).publicKey;
   const restBalance = opts.lpSupply - opts.salvorLpAmount;
   const holders: Array<{ owner: PublicKey; balance: bigint }> = [
     { owner: salvor.publicKey, balance: opts.salvorLpAmount },

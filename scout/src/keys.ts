@@ -68,7 +68,8 @@ export function loadOracleIdentity(rawBase58Seed: string, what: string): OracleI
   };
 }
 
-function keypairFromBytes(bytes: Uint8Array, what: string): Keypair {
+// web3.js 3.x keypair construction is async (WebCrypto-backed statics).
+async function keypairFromBytes(bytes: Uint8Array, what: string): Promise<Keypair> {
   const secret64 = toSecretKey64(bytes, what);
   return Keypair.fromSecretKey(Buffer.from(secret64));
 }
@@ -79,7 +80,7 @@ function keypairFromBytes(bytes: Uint8Array, what: string): Keypair {
  * disambiguation: anything that decodes as base58 is key material (a
  * wrong length is a hard error); anything else is treated as a file path.
  */
-export function loadSalvorKeypair(raw: string, what = "SALVOR_KEYPAIR"): Keypair {
+export async function loadSalvorKeypair(raw: string, what = "SALVOR_KEYPAIR"): Promise<Keypair> {
   const asBase58 = decodeBase58(raw, what);
   if (asBase58) {
     // Decodable base58 ⇒ key material; a wrong length is fatal, never a

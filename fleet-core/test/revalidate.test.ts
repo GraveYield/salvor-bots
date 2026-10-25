@@ -13,7 +13,7 @@ import { eligibilityAnchorPda, RAYDIUM_V4_PROGRAM_ID } from "@graveyield/sdk";
 
 const NOW = () => FIXED_NOW_MS;
 
-function world(overrides?: Partial<WorldOptions>) {
+async function world(overrides?: Partial<WorldOptions>) {
   return buildWorld({
     wsolReserve: 5_000_000_000n,
     memecoinReserve: 1_000_000n,
@@ -25,7 +25,7 @@ function world(overrides?: Partial<WorldOptions>) {
 
 describe("revalidateOpportunity", () => {
   test("certification-ready: no cert + ≥2 epochs elapsed → kind flips to certification-ready", async () => {
-    const w = world({});
+    const w = await world({});
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -39,7 +39,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("salvageable: live cert with enough remaining TTL", async () => {
-    const w = world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
+    const w = await world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -56,7 +56,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("cert inside TTL but under the strategy margin is rejected cert-expired", async () => {
-    const w = world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 60n }); // 60s < 120s margin
+    const w = await world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 60n }); // 60s < 120s margin
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -69,7 +69,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("expired cert flips back to certification-ready (epoch gap still satisfied)", async () => {
-    const w = world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) - 10n });
+    const w = await world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) - 10n });
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -84,7 +84,7 @@ describe("revalidateOpportunity", () => {
   test("epoch gap NOT satisfied + no cert → stale-opportunity", async () => {
     // currentEpoch defaults to 12 → an anchor firstEligibleEpoch of 11
     // leaves only 1 epoch elapsed (MIN_EPOCH_CONFIRMATION = 2).
-    const w = world({ firstEligibleEpoch: 11n });
+    const w = await world({ firstEligibleEpoch: 11n });
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -97,7 +97,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("invalidated anchor is rejected stale-anchor", async () => {
-    const w = world({ invalidatedAnchor: true });
+    const w = await world({ invalidatedAnchor: true });
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -110,7 +110,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("missing anchor is rejected anchor-missing", async () => {
-    const w = world({});
+    const w = await world({});
     w.rpc.deleteAccount(w.anchorPda);
     const out = await revalidateOpportunity({
       client: w.client,
@@ -124,7 +124,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("a cert binding a different anchor epoch is rejected state-changed", async () => {
-    const w = world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
+    const w = await world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
     // Overwrite the cert with a WRONG anchor epoch.
     w.rpc.setAccount(
       w.certPda,
@@ -148,7 +148,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("anchor epoch correct but the LIVE anchor moved → state-changed (cert vs anchor mismatch)", async () => {
-    const w = world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
+    const w = await world({ certExpiresAt: BigInt(Math.floor(FIXED_NOW_MS / 1000)) + 3_600n });
     // Overwrite the ANCHOR with a different epoch; cert now mismatches.
     w.rpc.setAccount(
       eligibilityAnchorPda(SCANNER_ID, RAYDIUM_V4_PROGRAM_ID, w.poolAddress),
@@ -171,7 +171,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("fresh reserves + LP supply flow into the revalidated snapshot", async () => {
-    const w = world({});
+    const w = await world({});
     const out = await revalidateOpportunity({
       client: w.client,
       ammProgramId: RAYDIUM_V4_PROGRAM_ID,
@@ -190,7 +190,7 @@ describe("revalidateOpportunity", () => {
   });
 
   test("missing pool account is rejected missing-accounts", async () => {
-    const w = world({});
+    const w = await world({});
     w.rpc.deleteAccount(w.poolAddress);
     const out = await revalidateOpportunity({
       client: w.client,

@@ -54,45 +54,46 @@ describe("loadOracleIdentity", () => {
 });
 
 describe("loadSalvorKeypair", () => {
-  test("base58 64-byte secret key", () => {
+  test("base58 64-byte secret key", async () => {
     const kp = nacl.sign.keyPair.fromSeed(SEED);
-    const loaded = loadSalvorKeypair(bs58.encode(kp.secretKey), "TEST_KP");
+    const loaded = await loadSalvorKeypair(bs58.encode(kp.secretKey), "TEST_KP");
     assert.deepEqual(Buffer.from(loaded.secretKey), Buffer.from(kp.secretKey));
   });
 
-  test("base58 32-byte seed", () => {
-    const loaded = loadSalvorKeypair(bs58.encode(SEED), "TEST_KP");
+  test("base58 32-byte seed", async () => {
+    const loaded = await loadSalvorKeypair(bs58.encode(SEED), "TEST_KP");
     const expected = nacl.sign.keyPair.fromSeed(SEED);
     assert.deepEqual(Buffer.from(loaded.secretKey), Buffer.from(expected.secretKey));
   });
 
-  test("solana-keygen JSON file (64-byte array)", () => {
+  test("solana-keygen JSON file (64-byte array)", async () => {
     const kp = nacl.sign.keyPair.fromSeed(SEED);
     const dir = mkdtempSync(join(tmpdir(), "scout-keys-"));
     const file = join(dir, "kp.json");
     writeFileSync(file, JSON.stringify(Array.from(kp.secretKey)));
-    const loaded = loadSalvorKeypair(file, "TEST_KP");
+    const loaded = await loadSalvorKeypair(file, "TEST_KP");
     assert.deepEqual(Buffer.from(loaded.publicKey.toBytes()), Buffer.from(kp.publicKey));
   });
 
-  test("solana-keygen JSON file (32-byte seed array)", () => {
+  test("solana-keygen JSON file (32-byte seed array)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "scout-keys-"));
     const file = join(dir, "seed.json");
     writeFileSync(file, JSON.stringify(Array.from(SEED)));
-    const loaded = loadSalvorKeypair(file, "TEST_KP");
+    const loaded = await loadSalvorKeypair(file, "TEST_KP");
     const expected = nacl.sign.keyPair.fromSeed(SEED);
     assert.deepEqual(Buffer.from(loaded.secretKey), Buffer.from(expected.secretKey));
   });
 
-  test("rejects garbage files", () => {
+  test("rejects garbage files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "scout-keys-"));
     const file = join(dir, "bad.json");
     writeFileSync(file, JSON.stringify({ not: "an array" }));
-    assert.throws(() => loadSalvorKeypair(file, "TEST_KP"), /JSON array of numbers/);
+    // async fn: every throw surfaces as a rejection
+    await assert.rejects(() => loadSalvorKeypair(file, "TEST_KP"), /JSON array of numbers/);
   });
 
-  test("rejects wrong-length base58", () => {
-    assert.throws(
+  test("rejects wrong-length base58", async () => {
+    await assert.rejects(
       () => loadSalvorKeypair(bs58.encode(new Uint8Array(10)), "TEST_KP"),
       /32 \(seed\) or 64/,
     );

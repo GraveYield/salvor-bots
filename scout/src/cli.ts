@@ -14,7 +14,7 @@ import { loadScoutConfig, buildScout } from "./index.js";
 
 async function main(): Promise<void> {
   const config = loadScoutConfig();
-  const scout = buildScout(config);
+  const scout = await buildScout(config);
 
   console.log(
     JSON.stringify({
