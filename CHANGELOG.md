@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased — web3.js 3.x migration (issue #54): coordinated with protocol]
+
+> Mirrors the protocol sdk migration byte-for-byte (src/ re-mirror) and
+> migrates the bot-side call surface. Dry-run defaults and live-execution
+> gating are untouched — the tests that pin forced-dry-run, no-keys ⇒
+> dry-run, and throw-on-missing-keys pass unchanged. 354/354 tests green
+> (root 116 + workspace 238).
+
+### Changed
+
+- **Dependency bump** — `@solana/web3.js` `^1.95.0` → `^3.1.1` across the
+  root and all seven bot packages; pnpm override pins the spl-token web3
+  peer to 3.1.1 (single `PublicKey` class identity tree-wide).
+- **`src/` re-mirror** — byte-equal to `protocol/sdk/src` including the
+  new `web3compat.ts` sync-PDA + spl-token interop layer (sdk-sync
+  parity verified by `diff -r`).
+- **Async keypair loading** — 3.x moved `Keypair.generate`/`fromSecretKey`
+  to WebCrypto-backed async statics: `loadSalvorKeypair`, `buildScout`
+  (scout) and `wireFleet` (fleet-ops) are now async with all callers
+  awaited; CLI entrypoints updated. Signing flows were audited — no
+  direct `tx.sign` sites exist in the fleet (submission goes through the
+  SDK's `sendAndConfirmTransaction`, already awaited).
+- **Boundary conversions** — slots/epochs via `Number()` (safe, far below
+  2^53); `OwnedAccount.lamports` stays bigint (u64 precision preserved);
+  u64 LE reads over 3.x `Uint8Array` account data go through `Buffer`
+  views (byte-identical copies).
+- **Tests** — async keypair fixtures, awaited world/fleet/bot builders,
+  `assert.rejects` for the now-async loader rejections, Buffer views for
+  instruction-data readers, async-oracle PDA cross-checks in the
+  mirrored suite files.
+
+## [Unreleased — Phase 1 (build + reliability): first CI, lint/format gates]
 All notable changes to the `salvor-bots` repository are documented here.
 The GraveYield protocol (on-chain programs + monorepo tooling) lives at
 [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
