@@ -22,6 +22,7 @@ import {
   SCANNER_ID,
   TOKEN_PROGRAM,
   VAULT_ID,
+  canonicalFixtureVaultSigner,
   encodeAmmInfo,
   encodeAnchor,
   encodeCert,
@@ -29,6 +30,7 @@ import {
   encodeMarketState,
   encodeScannerConfig,
   encodeTokenAccount,
+  encodeTokenAccountWithOwner,
   encodeVaultConfig,
   derivedKey,
 } from "./helpers.js";
@@ -123,6 +125,13 @@ export async function buildWorld(opts: WorldOptions): Promise<World> {
   rpc.setAccount(lpMint, encodeMint(opts.lpSupply), TOKEN_PROGRAM);
 
   // Market + side accounts (owner programs are validated by the derivation).
+  // The market stores its vault_signer_nonce (W5 canonical OpenBook v1
+  // rule) and the serum vaults' owner field holds the derived signer —
+  // the exact real-market relationship, no string-seed adaptation.
+  const { signer: marketVaultSigner, nonce: marketNonce } = canonicalFixtureVaultSigner(
+    market,
+    MARKET_PROGRAM,
+  );
   rpc.setAccount(
     market,
     encodeMarketState({
@@ -133,12 +142,8 @@ export async function buildWorld(opts: WorldOptions): Promise<World> {
       eventQ,
       bids,
       asks,
+      vaultSignerNonce: marketNonce,
     }),
-    MARKET_PROGRAM,
-  );
-  // The market vault signer PDA (what the serum vaults' owner field must hold).
-  const [marketVaultSigner] = PublicKey.findProgramAddressSync(
-    [Buffer.from("vault-signer"), market.toBytes()],
     MARKET_PROGRAM,
   );
   for (const [addr, what] of [
@@ -253,18 +258,3 @@ import { WSOL_MINT as WSOL_MINT_LOCAL } from "@graveyield/sdk";
 import type BN from "bn.js";
 export type { BN };
 export { AUTHORITY, FIXED_NOW_MS };
-
-/** Token account with a real owner field (snapshot aggregation needs it). */
-function encodeTokenAccountWithOwner(
-  mint: PublicKey,
-  owner: PublicKey,
-  amount: bigint,
-): Uint8Array {
-  const buf = new Uint8Array(165);
-  buf.set(mint.toBytes(), 0);
-  buf.set(owner.toBytes(), 32);
-  const view = new DataView(buf.buffer);
-  view.setBigUint64(64, amount, true);
-  view.setUint8(108, 1);
-  return buf;
-}
