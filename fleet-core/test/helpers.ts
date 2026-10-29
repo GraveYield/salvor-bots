@@ -8,7 +8,12 @@
 
 import { PublicKey, type AccountInfo, type Connection } from "@solana/web3.js";
 import bs58 from "bs58";
-import { AccountDisc, RAYDIUM_V4_AMM_INFO_SIZE, writer } from "@graveyield/sdk";
+import {
+  AccountDisc,
+  RAYDIUM_V4_AMM_INFO_SIZE,
+  createProgramAddressSync,
+  writer,
+} from "@graveyield/sdk";
 
 // ------------------------------------------------------------- constants
 
@@ -129,6 +134,21 @@ export function encodeTokenAccount(mint: PublicKey, amount: bigint): Uint8Array 
   return buf;
 }
 
+/** Token account with a real owner field (market vaults / LP holders). */
+export function encodeTokenAccountWithOwner(
+  mint: PublicKey,
+  owner: PublicKey,
+  amount: bigint,
+): Uint8Array {
+  const buf = new Uint8Array(165);
+  buf.set(mint.toBytes(), 0);
+  buf.set(owner.toBytes(), 32);
+  const view = new DataView(buf.buffer);
+  view.setBigUint64(64, amount, true);
+  view.setUint8(108, 1);
+  return buf;
+}
+
 export function encodeMint(supply: bigint): Uint8Array {
   const buf = new Uint8Array(82);
   const view = new DataView(buf.buffer);
@@ -171,9 +191,14 @@ export function encodeMarketState(opts: {
   eventQ: PublicKey;
   bids: PublicKey;
   asks: PublicKey;
+  /** Stored vault_signer_nonce (u64 LE @45) — REQUIRED for the canonical
+   * OpenBook v1 vault-signer derivation to reproduce `opts.vaultSigner`. */
+  vaultSignerNonce?: bigint;
 }): Uint8Array {
   const buf = new Uint8Array(388);
   buf.set(Buffer.from("serum"), 0);
+  const nonce = opts.vaultSignerNonce ?? 0n;
+  new DataView(buf.buffer).setBigUint64(45, nonce, true);
   buf.set(opts.coinMint.toBytes(), 53);
   buf.set(opts.pcMint.toBytes(), 85);
   buf.set(opts.coinVault.toBytes(), 117);
@@ -182,6 +207,33 @@ export function encodeMarketState(opts: {
   buf.set(opts.bids.toBytes(), 285);
   buf.set(opts.asks.toBytes(), 317);
   return buf;
+}
+
+/**
+ * Canonical OpenBook v1 vault signer for a FIXTURE market (W5):
+ * create_program_address([market, nonce_u64_le], program) — the real
+ * rule, no string seeds. Fixture markets are synthetic, so pick the
+ * smallest stored nonce whose derivation lands off-curve (deterministic
+ * per (market, program) pair), exactly the relationship real markets
+ * have: nonce STORED in the account, signer NOT stored anywhere.
+ */
+export function canonicalFixtureVaultSigner(
+  market: PublicKey,
+  program: PublicKey,
+): { signer: PublicKey; nonce: bigint } {
+  const nonceSeed = Buffer.alloc(8);
+  for (let n = 0; n <= 255; n++) {
+    nonceSeed.writeBigUInt64LE(BigInt(n));
+    try {
+      return {
+        signer: createProgramAddressSync([market.toBytes(), nonceSeed], program),
+        nonce: BigInt(n),
+      };
+    } catch {
+      // digest landed on the curve — next stored nonce
+    }
+  }
+  throw new Error(`no off-curve vault signer for market ${market.toBase58()} (nonce 0..255)`);
 }
 
 export function encodeSalvageReceipt(opts: {

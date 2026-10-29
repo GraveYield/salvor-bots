@@ -20,20 +20,34 @@
 //   project-serum/serum-dex dex/src/state.rs, 5-byte "serum" head):
 //     coin_mint@53  pc_mint@85  coin_vault@117  pc_vault@165
 //     event_q@253  bids@285  asks@317
+//     vault_signer_nonce@45 (u64 LE)
 //
-//   market vault signer: PDA ["vault-signer", market] under the market
-//   program (no on-chain account — re-derived here and cross-checked).
+//   market vault signer (W5, canonical OpenBook v1 rule):
+//     create_program_address([market.to_bytes(), nonce_u64_le], market_program)
+//   — Serum DEX v3 / OpenBook v1 `MarketState::vault_signer_key`: the
+//   nonce is the u64 LE field STORED in the market account at absolute
+//   offset 45; there are NO string seeds and NO bump search. Empirically
+//   pinned against the REAL mainnet SOL/USDC market 8BnEg..XTh6 (program
+//   srmqPvym..tPX, stored nonce 1): this rule reproduces the real signer
+//   CTz5UMLQ..DfF7 that owns both market vault token accounts, while the
+//   former string-seed PDA scheme does not (and with the real nonce its
+//   seeds do not even form a valid program address — see
+//   test/raydiumAccounts.test.ts and the protocol repo's committed
+//   Finding E vectors). Only serum-family MarketState programs (Serum
+//   v3 / OpenBook v1 — the only market programs Raydium V4 AmmInfo
+//   instances pair with) are supported; any other program fails closed
+//   at the vault-token-account owner cross-check below.
 //
 // EVERYTHING read from chain is untrusted until validated below: owner
 // programs, mint binding between AmmInfo and the market, vault-signer
-// PDA re-derivation, and account existence. A single mismatch fails
+// re-derivation, and account existence. A single mismatch fails
 // closed with a `MissingAccountsError` naming the offender.
 
 import { PublicKey } from "@solana/web3.js";
 import {
   RAYDIUM_V4_AMM_AUTHORITY,
   RAYDIUM_V4_PROGRAM_ID,
-  findProgramAddressSync,
+  createProgramAddressSync,
   raydiumV4RemainingAccounts,
   type V4PoolAccount,
 } from "@graveyield/sdk";
@@ -53,6 +67,7 @@ export const AMM_INFO_OFFSETS = {
 
 /** Serum MarketState absolute offsets (see module docblock). */
 export const MARKET_STATE_OFFSETS = {
+  VAULT_SIGNER_NONCE: 45,
   COIN_MINT: 53,
   PC_MINT: 85,
   COIN_VAULT: 117,
@@ -70,6 +85,15 @@ function readPubkey(data: Uint8Array, offset: number, what: string): PublicKey {
     throw new Error(`account too short to read ${what} @ ${offset} (len ${data.length})`);
   }
   return new PublicKey(data.slice(offset, offset + PUBKEY_LEN));
+}
+
+/** Read a u64 LE at an offset, validating bounds. */
+function readU64LE(data: Uint8Array, offset: number, what: string): bigint {
+  if (data.length < offset + 8) {
+    throw new Error(`account too short to read ${what} @ ${offset} (len ${data.length})`);
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return view.getBigUint64(offset, true);
 }
 
 /** Fail-closed error naming the offending account. */
@@ -178,8 +202,25 @@ export async function deriveV4CpiAccounts(
   }
 
   // --- Market-owned side accounts.
-  const vaultSignerSeeds = [Buffer.from("vault-signer"), market.toBytes()];
-  const [marketVaultSigner] = findProgramAddressSync(vaultSignerSeeds, marketProgram);
+  // OpenBook v1 vault signer (W5): create_program_address([market,
+  // nonce_le], market_program) with the nonce STORED in the market
+  // account (u64 LE @45). Not a PDA — no string seeds, no bump search.
+  const vaultSignerNonce = readU64LE(
+    marketInfo.data,
+    MARKET_STATE_OFFSETS.VAULT_SIGNER_NONCE,
+    "market vault_signer_nonce",
+  );
+  const nonceSeed = Buffer.alloc(8);
+  nonceSeed.writeBigUInt64LE(vaultSignerNonce);
+  let marketVaultSigner: PublicKey;
+  try {
+    marketVaultSigner = createProgramAddressSync([market.toBytes(), nonceSeed], marketProgram);
+  } catch (err) {
+    throw new MissingAccountsError(
+      `market ${market.toBase58()} vault-signer derivation failed for stored nonce ` +
+        `${vaultSignerNonce} under ${marketProgram.toBase58()}: ${(err as Error).message}`,
+    );
+  }
   // OpenOrders / event queue / bids / asks are owned by the MARKET program.
   for (const [address, what] of [
     [openOrders, "amm_open_orders"],
@@ -191,8 +232,11 @@ export async function deriveV4CpiAccounts(
     requireOwner(acc.owner, marketProgram, what);
   }
   // Serum coin/pc vaults are SPL TOKEN accounts whose token-account
-  // OWNER field is the market vault signer PDA (fork-fixture-proven:
-  // both vaults share one owner == the vault signer).
+  // OWNER field is the market vault signer (fork-fixture-proven: both
+  // vaults share one owner == the vault signer). This cross-check is the
+  // ground truth that pins the derivation above: a market with a
+  // tampered nonce, a foreign market program, or re-pointed vaults
+  // fails closed HERE.
   const SPL_TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
   for (const [address, what] of [
     [marketCoinVault, "market coin_vault"],
