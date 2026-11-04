@@ -234,11 +234,14 @@ without manually constructing Anchor instructions or hand-rolling borsh.
 ## Status — Phase 8 complete
 
 All eight Phase-8 SDK operations are implemented and tested against the
-live devnet ProtocolConfigs at the handoff-deployed PDA addresses:
+assigned NS-3 devnet identities (config PDAs are pre-deployment
+derivations; the live-decode smoke validates the deployment once the
+owner executes it — see the pending-deployment notes in
+`test/devnetSmoke.test.ts`):
 
 | Operation | Backing instruction(s) | Live-verified |
 |---|---|---|
-| `evaluatePool()` | Pure read; walks all six derelict-pool criteria (C1–C6) | ✔ devnet smoke |
+| `evaluatePool()` | Pure read; walks all six derelict-pool criteria (C1–C6) | ✔ devnet smoke (against NS-2; re-runs vs NS-3 post-deployment) |
 | `recordLaunchPrice()` | `record_launch_price` + C2 precompile | ✔ (read-back of PDA) |
 | `phase1()` | `evaluate_pool_phase_1` + C1 precompile | ✔ (IDL-free pattern) |
 | `phase2()` | `evaluate_pool_phase_2` + fresh C1 precompile | ✔ (IDL-free pattern) |
@@ -345,18 +348,27 @@ The SDK mirrors these on-chain byte layouts exactly:
 - **Ed25519 precompile wire format**: 112 bytes (header + pk + sig) —
   the runtime's OWN layout, not the pre-Phase-6 "14-byte header" form.
 
-## Devnet program IDs (real, deployed)
+## NS-3 devnet program IDs (assigned; deployment PENDING)
 
-| Program | Devnet ID |
+| Program | NS-3 ID |
 |---|---|
-| GraveScanner | `CuQZesHk8eHvaoNTFiTr1hUjfVKGCqDZHTTe8HkJAo54` |
-| GraveVault | `Bd5smhQgMrvcRw9j659MNTKySpBJsKZLBKtinCAGs7rg` |
-| Scanner ProtocolConfig PDA | `Fb6uvYyRAKFRCuab44imZ6YAVAEfGLoAPDxFpwVXQdiD` |
-| Vault ProtocolConfig PDA | `hyKk983fguE2CGA5Dx5TLKfBft1AJrm7CHoe1PTUipS` |
+| GraveScanner | `EFJpKtWx5gDnc4Hh6GEEgPLUrPh377E4Nfic8jsJAQJL` |
+| GraveVault | `7VxUGJNgi1bZ8x4rTtLBNdgLs9sCLmUTpVE3on1nshya` |
+| Scanner ProtocolConfig PDA | `5PK9pz4FcmiWGG3h81WquD2QpwuEj2GeAXxLGGMJkKKe` |
+| Vault ProtocolConfig PDA | `5aocH2UAFixQneb5LzoNf2m3b92AUc9zFP6oWEh6Vnda` |
 
-The devnet smoke tests assert these addresses and decode the live
-ProtocolConfigs against the spec default tables
-(`SCANNER_PROTOCOL_CONFIG_DEFAULTS` / `VAULT_PROTOCOL_CONFIG_DEFAULTS`).
+The config PDAs are the pre-deployment derivations of `['protocol_config']`
+under the assigned NS-3 IDs (bump 255). They become on-chain facts only
+after the owner executes the NS-3 deployment recorded in the protocol
+repo's `docs/DEVNET.md` — until then nothing on devnet answers at these
+addresses. The NS-2 deployment (`CuQZes…Ao54` / `Bd5smh…s7rg`, config PDAs
+`Fb6uv…QdiD` / `hyKk9…UipS`) is a preserved legacy record in
+`graveyield-protocol/docs/LEGACY_DEPLOYMENTS.md`.
+
+The devnet smoke tests assert the NS-3 derivations and (once the
+deployment exists) decode the live ProtocolConfigs against the spec
+default tables (`SCANNER_PROTOCOL_CONFIG_DEFAULTS` /
+`VAULT_PROTOCOL_CONFIG_DEFAULTS`).
 
 ## LOCKER-002
 

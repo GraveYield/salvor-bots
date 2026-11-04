@@ -12,10 +12,12 @@
 //   * `SCOUT_DRY_RUN=0`  → submission mode requires ACTIVITY_ORACLE_KEY +
 //     SALVOR_KEYPAIR; loadScoutConfig throws if they are missing.
 //
-// On devnet the deployed ProtocolConfig's activity/launch-price oracles
-// point at the (since-wiped) deployer key — attestation-signed submissions
-// against that cluster can only verify once the owner re-points the
-// oracles. Until then every devnet Scout run is effectively read-only, and
+// On devnet the NS-3 ProtocolConfig (assigned, DR-002; deployment pending)
+// will carry DEDICATED oracle keys: an activity oracle and a launch-price
+// oracle, registered by the governance authority via update_protocol_config
+// after initialization. Until the owner executes the NS-3 deployment and
+// the oracle registration, attestation-signed submissions against devnet
+// cannot verify — every devnet Scout run is effectively read-only, and
 // this config surfaces the mode explicitly instead of failing mid-cycle.
 
 import { PublicKey } from "@solana/web3.js";
