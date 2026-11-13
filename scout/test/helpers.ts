@@ -190,7 +190,17 @@ export function encodeAmmInfo(opts: {
 
 // --------------------------------------------------------- transaction-like
 
-/** A getTransaction() response that satisfies deriveLastSwapV4 + deriveLaunchPriceV4. */
+/**
+ * A getTransaction() response shape that satisfies the SDK's CANONICAL
+ * Raydium V4 economic-swap classifier (raydiumV4Evidence.ts, D4):
+ *   - a V4 instruction whose data carries the SwapBaseIn tag (9),
+ *   - whose account list includes the pool (amm) account AND both
+ *     authoritative vaults (indexes 1/2/3 of the 4-key fake key list),
+ *   - with pre/post token balances showing both vaults moving by nonzero
+ *     amounts in opposite directions in a successful transaction.
+ * Synthetic test fixture — the SDK's real-evidence fixtures live in
+ * graveyield-protocol sdk/test/fixtures/lastSwap (see PROVENANCE.md).
+ */
 export function makeSwapTxLike(opts: {
   programId: PublicKey;
   poolAddress: PublicKey;
@@ -211,7 +221,13 @@ export function makeSwapTxLike(opts: {
         getAccountKeys: () => ({
           keySegments: () => [[opts.programId, opts.poolAddress, opts.coinVault, opts.pcVault]],
         }),
-        compiledInstructions: [{ programIdIndex: 0, accountKeyIndexes: [1] }],
+        compiledInstructions: [
+          {
+            programIdIndex: 0,
+            accountKeyIndexes: [1, 2, 3],
+            data: bs58.encode(v4SwapTagData(9)),
+          },
+        ],
       },
     },
     meta: {
@@ -254,6 +270,16 @@ interface SignatureInfoLike {
   slot: number;
   err: null;
   blockTime: number;
+  /** D5: the canonical derivation only accepts finalized signatures. */
+  confirmationStatus: "finalized";
+}
+
+/** Raydium V4 instruction data for `tag` + 16 zero arg bytes — the same
+ *  shape the SDK's own fake-RPC harness uses for labeled mutations. */
+function v4SwapTagData(tag: number): Uint8Array {
+  const data = new Uint8Array(17);
+  data[0] = tag;
+  return data;
 }
 
 /**
@@ -302,7 +328,7 @@ export class FakeConnection {
     const blockTime = this.blockTime - age;
     const signature = `SWAP_SIG_${poolAddress.toBase58().slice(0, 8)}_${blockTime}`;
     this.signaturesByPool.set(poolAddress.toBase58(), [
-      { signature, slot: 99_000, err: null, blockTime },
+      { signature, slot: 99_000, err: null, blockTime, confirmationStatus: "finalized" },
     ]);
     this.transactions.set(
       signature,
