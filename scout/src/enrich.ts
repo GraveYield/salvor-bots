@@ -47,11 +47,16 @@ export interface ActivityRecord {
    */
   noSwapFound: boolean;
   /**
-   * True when the last-swap evidence is incomplete/unresolved (D5,
-   * Correction 001): the scan could not establish the pool's activity
-   * either way (unresolved candidates, empty/pruned signature response,
-   * bounded scan that did not reach history end, or an RPC failure).
-   * C1 inactivity MUST NOT pass from such a record.
+   * True when the last-swap evidence is INCOMPLETE (D5, Correction 001):
+   * the SDK scan could not establish the pool's activity either way —
+   * unresolved candidates, an empty/pruned signature response, or a
+   * bounded scan that did not reach history end — and `deriveLastSwapV4`
+   * therefore threw `LastSwapEvidenceIncompleteError`. SDK incomplete
+   * evidence is the ONLY source of an `unresolved` record. Transport,
+   * RPC, and unexpected execution failures are not evidence states:
+   * they are never converted into records (unresolved or otherwise) —
+   * they propagate to the caller unchanged. C1 inactivity MUST NOT pass
+   * from such a record.
    */
   unresolved: boolean;
 }
@@ -81,9 +86,11 @@ export class ActivityIndexer {
    * for a verified swap, returns `null` ONLY for a definitive
    * no_swap_in_scan (complete scan, every candidate provably not an
    * economic swap), and THROWS `LastSwapEvidenceIncompleteError` for
-   * incomplete evidence. Incomplete evidence becomes an explicit
-   * `unresolved` record — never `noSwapFound: true`, never cached, so
-   * the next cycle re-scans.
+   * incomplete evidence. Only SDK incomplete evidence becomes an
+   * explicit `unresolved` record — never `noSwapFound: true`, never
+   * cached, so the next cycle re-scans. Transport, RPC, and unexpected
+   * execution failures are evidence-free: they propagate to the caller
+   * unchanged and never become records.
    */
   async indexActivity(
     connection: Connection,
@@ -124,8 +131,10 @@ export class ActivityIndexer {
           };
     } catch (err) {
       if (!(err instanceof LastSwapEvidenceIncompleteError)) {
-        // RPC/network/decoding failures are NOT evidence states — keep the
-        // existing propagation behavior so operators see them.
+        // Transport, RPC, and unexpected execution failures are NOT
+        // evidence states — keep the existing propagation behavior so
+        // operators see them. Only SDK incomplete evidence becomes a
+        // record.
         throw err;
       }
       // D5 / Correction 001: incomplete evidence stays explicitly
