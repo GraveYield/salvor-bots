@@ -190,7 +190,17 @@ export function encodeAmmInfo(opts: {
 
 // --------------------------------------------------------- transaction-like
 
-/** A getTransaction() response that satisfies deriveLastSwapV4 + deriveLaunchPriceV4. */
+/**
+ * A getTransaction() response shape that satisfies the SDK's CANONICAL
+ * Raydium V4 economic-swap classifier (raydiumV4Evidence.ts, D4):
+ *   - a V4 instruction whose data carries the SwapBaseIn tag (9),
+ *   - whose account list includes the pool (amm) account AND both
+ *     authoritative vaults (indexes 1/2/3 of the 4-key fake key list),
+ *   - with pre/post token balances showing both vaults moving by nonzero
+ *     amounts in opposite directions in a successful transaction.
+ * Synthetic test fixture — the SDK's real-evidence fixtures live in
+ * graveyield-protocol sdk/test/fixtures/lastSwap (see PROVENANCE.md).
+ */
 export function makeSwapTxLike(opts: {
   programId: PublicKey;
   poolAddress: PublicKey;
@@ -204,6 +214,11 @@ export function makeSwapTxLike(opts: {
   coinPost: string;
   pcPre: string;
   pcPost: string;
+  /** Raydium V4 instruction tag. 9 = swapBaseIn (default); 3 = deposit
+   *  liquidity — used to build a DEFINITIVE no-swap history (IMPL-001
+   *  Correction 001: empty signature responses are INCOMPLETE evidence,
+   *  so a definitive no-swap scan needs provably non-swap candidates). */
+  instructionTag?: number;
 }): unknown {
   return {
     transaction: {
@@ -211,10 +226,19 @@ export function makeSwapTxLike(opts: {
         getAccountKeys: () => ({
           keySegments: () => [[opts.programId, opts.poolAddress, opts.coinVault, opts.pcVault]],
         }),
-        compiledInstructions: [{ programIdIndex: 0, accountKeyIndexes: [1] }],
+        compiledInstructions: [
+          {
+            programIdIndex: 0,
+            accountKeyIndexes: [1, 2, 3],
+            data: bs58.encode(v4SwapTagData(opts.instructionTag ?? 9)),
+          },
+        ],
       },
     },
     meta: {
+      // Correction 001 §2: only an EXPLICIT `meta.err === null` establishes
+      // success — an absent `err` property is unresolved evidence.
+      err: null,
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
@@ -254,6 +278,16 @@ interface SignatureInfoLike {
   slot: number;
   err: null;
   blockTime: number;
+  /** D5: the canonical derivation only accepts finalized signatures. */
+  confirmationStatus: "finalized";
+}
+
+/** Raydium V4 instruction data for `tag` + 16 zero arg bytes — the same
+ *  shape the SDK's own fake-RPC harness uses for labeled mutations. */
+function v4SwapTagData(tag: number): Uint8Array {
+  const data = new Uint8Array(17);
+  data[0] = tag;
+  return data;
 }
 
 /**
@@ -287,12 +321,21 @@ export class FakeConnection {
     this.accounts.delete(address.toBase58());
   }
 
-  /** Install a swap history entry for a pool (also installs the tx). */
+  /** Install a swap history entry for a pool (also installs the tx).
+   *  `liquidityOnly` installs one canonical LIQUIDITY (deposit, tag 3)
+   *  transaction instead — a complete scan whose every candidate is
+   *  provably not an economic swap, i.e. a DEFINITIVE `no_swap_in_scan`
+   *  under the IMPL-001 Correction 001 evidence contract (an empty
+   *  signature response is INCOMPLETE evidence, never definitive). */
   setSwapHistory(
     poolAddress: PublicKey,
     programId: PublicKey,
     pool: { coinVault: PublicKey; pcVault: PublicKey },
-    opts?: { lastSwapAgeSeconds?: number; neverSwapped?: boolean },
+    opts?: {
+      lastSwapAgeSeconds?: number;
+      neverSwapped?: boolean;
+      liquidityOnly?: boolean;
+    },
   ): void {
     const age = opts?.lastSwapAgeSeconds ?? 100 * 86_400; // 100 days stale
     if (opts?.neverSwapped) {
@@ -302,7 +345,7 @@ export class FakeConnection {
     const blockTime = this.blockTime - age;
     const signature = `SWAP_SIG_${poolAddress.toBase58().slice(0, 8)}_${blockTime}`;
     this.signaturesByPool.set(poolAddress.toBase58(), [
-      { signature, slot: 99_000, err: null, blockTime },
+      { signature, slot: 99_000, err: null, blockTime, confirmationStatus: "finalized" },
     ]);
     this.transactions.set(
       signature,
@@ -318,6 +361,7 @@ export class FakeConnection {
         coinPost: "1100000",
         pcPre: "100000",
         pcPost: "90000",
+        instructionTag: opts?.liquidityOnly ? 3 : 9,
       }),
     );
   }
@@ -438,6 +482,9 @@ export function installPool(
     coinIsWsol?: boolean;
     lastSwapAgeSeconds?: number;
     neverSwapped?: boolean;
+    /** Install a provably non-swap (liquidity) history instead — the
+     *  DEFINITIVE no-swap fixture (see FakeConnection.setSwapHistory). */
+    liquidityOnly?: boolean;
   },
 ): PoolFixture {
   const baseMint = derivedKey(0xb1, opts.poolAddress); // memecoin
@@ -498,6 +545,7 @@ export function installPool(
     {
       lastSwapAgeSeconds: opts.lastSwapAgeSeconds,
       neverSwapped: opts.neverSwapped,
+      liquidityOnly: opts.liquidityOnly,
     },
   );
 

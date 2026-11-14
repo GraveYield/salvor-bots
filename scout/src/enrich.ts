@@ -14,6 +14,7 @@ import { unpackMint } from "@solana/spl-token";
 import { asBufferAccount } from "@graveyield/sdk";
 import {
   deriveLastSwapV4,
+  LastSwapEvidenceIncompleteError,
   RAYDIUM_V4_PROGRAM_ID,
   readLpMintSupply,
   readVaultReserve,
@@ -22,7 +23,15 @@ import {
 
 // ------------------------------------------------------------ activity
 
-/** Last-swap activity record from signature history. */
+/**
+ * Last-swap activity record from signature history.
+ *
+ * IMPL-001 Correction 001 §1: the record distinguishes DEFINITIVE "no
+ * swap in the covered history" (`noSwapFound`, only set on a complete
+ * scan where every candidate is provably not an economic swap) from
+ * INCOMPLETE evidence (`unresolved`). The eligibility pre-filter must
+ * never pass C1 from an unresolved record.
+ */
 export interface ActivityRecord {
   poolAddress: PublicKey;
   /** Unix timestamp (seconds) of the pool's most recent swap. */
@@ -31,8 +40,25 @@ export interface ActivityRecord {
   lastSwapSlot: number;
   /** Signature of the most recent swap transaction (audit anchor). */
   lastSwapSignature: string;
-  /** True if the scan exhausted all signatures without finding a swap. */
+  /**
+   * True only when the scan covered the pool's full available signature
+   * history and every candidate is provably not an economic swap (SDK
+   * `no_swap_in_scan`, definitive). Never true for incomplete evidence.
+   */
   noSwapFound: boolean;
+  /**
+   * True when the last-swap evidence is INCOMPLETE (D5, Correction 001):
+   * the SDK scan could not establish the pool's activity either way —
+   * unresolved candidates, an empty/pruned signature response, or a
+   * bounded scan that did not reach history end — and `deriveLastSwapV4`
+   * therefore threw `LastSwapEvidenceIncompleteError`. SDK incomplete
+   * evidence is the ONLY source of an `unresolved` record. Transport,
+   * RPC, and unexpected execution failures are not evidence states:
+   * they are never converted into records (unresolved or otherwise) —
+   * they propagate to the caller unchanged. C1 inactivity MUST NOT pass
+   * from such a record.
+   */
+  unresolved: boolean;
 }
 
 interface ActivityCacheEntry {
@@ -53,7 +79,19 @@ export class ActivityIndexer {
     this.ttlMs = opts?.ttlMs ?? 3_600_000;
   }
 
-  /** Index last-swap activity for a pool (cached within the TTL). */
+  /**
+   * Index last-swap activity for a pool (cached within the TTL).
+   *
+   * IMPL-001 Correction 001 §1: `deriveLastSwapV4` returns a value only
+   * for a verified swap, returns `null` ONLY for a definitive
+   * no_swap_in_scan (complete scan, every candidate provably not an
+   * economic swap), and THROWS `LastSwapEvidenceIncompleteError` for
+   * incomplete evidence. Only SDK incomplete evidence becomes an
+   * explicit `unresolved` record — never `noSwapFound: true`, never
+   * cached, so the next cycle re-scans. Transport, RPC, and unexpected
+   * execution failures are evidence-free: they propagate to the caller
+   * unchanged and never become records.
+   */
   async indexActivity(
     connection: Connection,
     poolAddress: PublicKey,
@@ -66,27 +104,58 @@ export class ActivityIndexer {
       return cached.record;
     }
 
-    const derivation = await deriveLastSwapV4(connection, RAYDIUM_V4_PROGRAM_ID, poolAddress, {
-      scanLimit: opts?.scanLimit ?? 1_000,
-    });
+    let record: ActivityRecord;
+    try {
+      const derivation = await deriveLastSwapV4(connection, RAYDIUM_V4_PROGRAM_ID, poolAddress, {
+        scanLimit: opts?.scanLimit ?? 1_000,
+      });
+      record = derivation
+        ? {
+            poolAddress,
+            lastSwapUnixTs: derivation.lastSwapUnixTs,
+            lastSwapSlot: derivation.slot,
+            lastSwapSignature: derivation.signature,
+            noSwapFound: false,
+            unresolved: false,
+          }
+        : {
+            // Definitive: the scan covered the pool's full available
+            // history and every candidate is provably not an economic
+            // swap (deriveLastSwapV4 returns null only in this state).
+            poolAddress,
+            lastSwapUnixTs: 0,
+            lastSwapSlot: 0,
+            lastSwapSignature: "",
+            noSwapFound: true,
+            unresolved: false,
+          };
+    } catch (err) {
+      if (!(err instanceof LastSwapEvidenceIncompleteError)) {
+        // Transport, RPC, and unexpected execution failures are NOT
+        // evidence states — keep the existing propagation behavior so
+        // operators see them. Only SDK incomplete evidence becomes a
+        // record.
+        throw err;
+      }
+      // D5 / Correction 001: incomplete evidence stays explicitly
+      // unresolved. It must never become `noSwapFound: true`, and the C1
+      // pre-filter refuses to pass inactivity from it.
+      record = {
+        poolAddress,
+        lastSwapUnixTs: 0,
+        lastSwapSlot: 0,
+        lastSwapSignature: "",
+        noSwapFound: false,
+        unresolved: true,
+      };
+    }
 
-    const record: ActivityRecord = derivation
-      ? {
-          poolAddress,
-          lastSwapUnixTs: derivation.lastSwapUnixTs,
-          lastSwapSlot: derivation.slot,
-          lastSwapSignature: derivation.signature,
-          noSwapFound: false,
-        }
-      : {
-          poolAddress,
-          lastSwapUnixTs: 0,
-          lastSwapSlot: 0,
-          lastSwapSignature: "",
-          noSwapFound: true,
-        };
-
-    this.cache.set(key, { record, cachedAtMs: now });
+    // Only resolved evidence is cached. An unresolved record re-scans on
+    // the next cycle (the evidence may be complete by then); caching it
+    // would freeze the unresolved state for the whole TTL.
+    if (!record.unresolved) {
+      this.cache.set(key, { record, cachedAtMs: now });
+    }
     return record;
   }
 

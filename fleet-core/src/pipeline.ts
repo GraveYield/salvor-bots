@@ -685,12 +685,18 @@ export class ExecutionPipeline {
     }
 
     // The last-swap timestamp must be REAL: re-derive from Raydium V4
-    // history (SDK, fail-closed) — never from the envelope.
+    // history (SDK, fail-closed) — never from the envelope. Legacy
+    // contract (IMPL-001 Correction 001 §1): `null` means a DEFINITIVE
+    // "provably no swap in the covered history"; INCOMPLETE evidence
+    // never folds into `null` — it surfaces as
+    // `LastSwapEvidenceIncompleteError` and fails certification closed
+    // (the error propagates; the pool is simply not certifiable this
+    // cycle).
     const { deriveLastSwapV4 } = await import("@graveyield/sdk");
     const lastSwap = await deriveLastSwapV4(connection, rv.ammProgramId, rv.poolAddress);
     if (!lastSwap) {
       throw new Error(
-        `cannot certify ${rv.poolAddress.toBase58()}: last-swap derivation unavailable (never swapped or incomplete history)`,
+        `cannot certify ${rv.poolAddress.toBase58()}: no verified last swap in the covered history (definitive no_swap_in_scan) — no attestation timestamp exists`,
       );
     }
 

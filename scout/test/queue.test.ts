@@ -21,6 +21,7 @@ function makeScored(poolByte: number, score: number): ScoutScoredCandidate {
       lastSwapSlot: 0,
       lastSwapSignature: "",
       noSwapFound: true,
+      unresolved: false,
     },
     reserves: {
       poolAddress: pool,

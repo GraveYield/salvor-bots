@@ -274,7 +274,17 @@ export function derivedKey(prefixByte: number, poolAddress: PublicKey): PublicKe
   return new PublicKey(out);
 }
 
-/** A transaction shape satisfying deriveLastSwapV4 (SDK's swap extractor). */
+/**
+ * A getTransaction() response shape that satisfies the SDK's CANONICAL
+ * Raydium V4 economic-swap classifier (raydiumV4Evidence.ts, D4):
+ *   - a V4 instruction whose data carries the SwapBaseIn tag (9),
+ *   - whose account list includes the pool (amm) account AND both
+ *     authoritative vaults (indexes 1/2/3 of the 4-key fake key list),
+ *   - with pre/post token balances showing both vaults moving by nonzero
+ *     amounts in opposite directions in a successful transaction.
+ * Synthetic test fixture — the SDK's real-evidence fixtures live in
+ * graveyield-protocol sdk/test/fixtures/lastSwap (see PROVENANCE.md).
+ */
 export function makeSwapTxLike(opts: {
   programId: PublicKey;
   poolAddress: PublicKey;
@@ -287,6 +297,12 @@ export function makeSwapTxLike(opts: {
   coinPost: string;
   pcPre: string;
   pcPost: string;
+  /**
+   * Explicit failure recorded in `meta.err` — the classifier marks such a
+   * candidate `not_economic_swap` (failed_transaction), which is how a
+   * DEFINITIVE no-swap fixture is built. Absent → `meta.err: null`.
+   */
+  metaErr?: unknown;
 }): unknown {
   return {
     transaction: {
@@ -294,10 +310,20 @@ export function makeSwapTxLike(opts: {
         getAccountKeys: () => ({
           keySegments: () => [[opts.programId, opts.poolAddress, opts.coinVault, opts.pcVault]],
         }),
-        compiledInstructions: [{ programIdIndex: 0, accountKeyIndexes: [1] }],
+        compiledInstructions: [
+          {
+            programIdIndex: 0,
+            accountKeyIndexes: [1, 2, 3],
+            data: bs58.encode(v4SwapTagData(9)),
+          },
+        ],
       },
     },
     meta: {
+      // Correction 001 §2: only an EXPLICIT `meta.err === null` establishes
+      // success — an absent `err` property is unresolved evidence, and a
+      // non-null `err` is a definitive failed transaction (never a swap).
+      err: opts.metaErr ?? null,
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
@@ -337,6 +363,16 @@ interface SigInfo {
   slot: number;
   err: null;
   blockTime: number;
+  /** D5: the canonical derivation only accepts finalized signatures. */
+  confirmationStatus: "finalized";
+}
+
+/** Raydium V4 instruction data for `tag` + 16 zero arg bytes — the same
+ *  shape the SDK's own fake-RPC harness uses for labeled mutations. */
+function v4SwapTagData(tag: number): Uint8Array {
+  const data = new Uint8Array(17);
+  data[0] = tag;
+  return data;
 }
 
 /** Everything the fleet-core pipeline + revalidator touch, in memory. */
@@ -394,7 +430,7 @@ export class FakeConnection {
     const blockTime = this.blockTime - age;
     const signature = `SWAP_SIG_${blockTime}_${poolAddress.toBase58().slice(0, 6)}`;
     this.signaturesByPool.set(poolAddress.toBase58(), [
-      { signature, slot: 99_000, err: null, blockTime },
+      { signature, slot: 99_000, err: null, blockTime, confirmationStatus: "finalized" },
     ]);
     this.transactions.set(
       signature,
