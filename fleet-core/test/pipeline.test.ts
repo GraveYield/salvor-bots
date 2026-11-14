@@ -28,6 +28,7 @@ import {
   vaultAuthorityPda,
   salvageReceiptPda,
   decodeGraveYieldErrorCode,
+  LastSwapEvidenceIncompleteError,
 } from "@graveyield/sdk";
 import {
   ExecutionPipeline,
@@ -36,9 +37,16 @@ import {
   FakeRouteAdapter,
   buildEnvelope,
   DEFAULT_TUNABLES,
+  type AttestationSource,
   type ExecutionPolicy,
 } from "../src/index.js";
-import { FIXED_NOW_MS, SCANNER_ID, VAULT_ID, encodeSalvageReceipt } from "./helpers.js";
+import {
+  FIXED_NOW_MS,
+  SCANNER_ID,
+  VAULT_ID,
+  encodeSalvageReceipt,
+  makeSwapTxLike,
+} from "./helpers.js";
 import { buildWorld } from "./world.js";
 
 const NOW = () => FIXED_NOW_MS;
@@ -229,6 +237,137 @@ describe("ExecutionPipeline — certification-ready path (dry-run)", () => {
     });
     assert.equal(out.ok, false);
     assert.equal(out.failureClass, "economic-insufficient");
+  });
+});
+
+/**
+ * Wraps an AttestationSource and records every signing request — lets the
+ * regression assert that the oracle is NEVER asked to sign from incomplete
+ * evidence (IMPL-001 Correction 004).
+ */
+class RecordingAttestationSource implements AttestationSource {
+  readonly requests: Uint8Array[] = [];
+  constructor(private readonly inner: AttestationSource) {}
+  async signAttestation(message: Uint8Array) {
+    this.requests.push(message);
+    return this.inner.signAttestation(message);
+  }
+}
+
+describe("ExecutionPipeline — incomplete last-swap evidence on the certification path (IMPL-001 Correction 004)", () => {
+  const WORLD = {
+    wsolReserve: 5_000_000_000n,
+    memecoinReserve: 1_000_000n,
+    lpSupply: 10_000_000n,
+    salvorLpAmount: 1_000_000n,
+  };
+
+  test("control: a verified swap still prepares the certify-and-salvage bundle", async () => {
+    const w = await buildWorld({ ...WORLD });
+    const { pipeline } = makePipeline({ world: w });
+    const oracle = new RecordingAttestationSource(new LocalAttestationSource(await KeypairShim()));
+    const out = await pipeline.prepare({
+      envelope: certificationReadyEnvelope(w),
+      salvor: w.salvor.publicKey,
+      attestationSource: oracle,
+    });
+    assert.ok(out.ok, `prepare failed: ${out.failureClass} ${out.reason}`);
+    assert.equal(out.prepared!.kind, "certify-and-salvage");
+    assert.equal(oracle.requests.length, 1, "exactly one attestation signing request");
+    assert.equal(w.rpc.sentTransactions.length, 0, "dry-run never sends");
+  });
+
+  test("LastSwapEvidenceIncompleteError fails certification closed: no attestation, no prepared bundle, no send", async () => {
+    const w = await buildWorld({ ...WORLD });
+    // Incomplete evidence: the pool's history holds a finalized candidate,
+    // but the RPC no longer serves its transaction data (pruned). The
+    // candidate is unresolved, so deriveLastSwapV4 must THROW incomplete —
+    // never fold into null (definitive) and never fabricate a swap.
+    w.rpc.transactions.clear();
+    const { pipeline, sink } = makePipeline({ world: w });
+    const oracle = new RecordingAttestationSource(new LocalAttestationSource(await KeypairShim()));
+    await assert.rejects(
+      () =>
+        pipeline.prepare({
+          envelope: certificationReadyEnvelope(w),
+          salvor: w.salvor.publicKey,
+          attestationSource: oracle,
+        }),
+      (err: Error) => {
+        assert.ok(
+          err instanceof LastSwapEvidenceIncompleteError,
+          `expected LastSwapEvidenceIncompleteError, got: ${String(err)}`,
+        );
+        const incomplete = err as LastSwapEvidenceIncompleteError;
+        assert.equal(incomplete.evidence.status, "incomplete");
+        assert.equal(incomplete.evidence.lastSwap, null);
+        assert.equal(incomplete.evidence.candidates.length, 1);
+        assert.equal(incomplete.evidence.candidates[0]!.outcome.kind, "unresolved");
+        assert.equal(incomplete.evidence.candidates[0]!.outcome.reason, "transaction_data_missing");
+        return true;
+      },
+    );
+    assert.equal(
+      oracle.requests.length,
+      0,
+      "no attestation may be signed from incomplete evidence",
+    );
+    assert.equal(w.rpc.sentTransactions.length, 0, "no transaction may be sent");
+    // The pipeline reached assembly (economics passed) but reported nothing
+    // as prepared or submitted — the typed error surfaced instead.
+    assert.equal(sink.where((e) => e.type === "economic-pass").length, 1);
+    assert.equal(sink.where((e) => e.type === "prepared").length, 0);
+    assert.equal(sink.where((e) => e.type === "submitted").length, 0);
+  });
+
+  test("incomplete evidence stays distinguishable from a definitive no_swap_in_scan", async () => {
+    const w = await buildWorld({ ...WORLD });
+    // Definitive no-swap world: the pool's ONLY history entry is an
+    // EXPLICITLY failed transaction (meta.err recorded) — provably not an
+    // economic swap, and the scan reaches history end. deriveLastSwapV4
+    // returns null, so certification fails with the dedicated no-swap
+    // error — NOT the incomplete-evidence error.
+    const sigs = w.rpc.signaturesByPool.get(w.poolAddress.toBase58())!;
+    const sigInfo = sigs[0]!;
+    w.rpc.transactions.set(
+      sigInfo.signature,
+      makeSwapTxLike({
+        programId: RAYDIUM_V4_PROGRAM_ID,
+        poolAddress: w.poolAddress,
+        coinVault: w.coinVault,
+        pcVault: w.pcVault,
+        blockTime: sigInfo.blockTime,
+        slot: sigInfo.slot,
+        signature: sigInfo.signature,
+        coinPre: "1000000",
+        coinPost: "1100000",
+        pcPre: "100000",
+        pcPost: "90000",
+        metaErr: { InstructionError: [0, { Custom: 0x1771 }] },
+      }),
+    );
+    const { pipeline, sink } = makePipeline({ world: w });
+    const oracle = new RecordingAttestationSource(new LocalAttestationSource(await KeypairShim()));
+    await assert.rejects(
+      () =>
+        pipeline.prepare({
+          envelope: certificationReadyEnvelope(w),
+          salvor: w.salvor.publicKey,
+          attestationSource: oracle,
+        }),
+      (err: Error) => {
+        assert.ok(
+          !(err instanceof LastSwapEvidenceIncompleteError),
+          "definitive no_swap_in_scan must NOT surface as LastSwapEvidenceIncompleteError",
+        );
+        assert.match(err.message, /cannot certify .*no_swap_in_scan/);
+        return true;
+      },
+    );
+    assert.equal(oracle.requests.length, 0, "no attestation without a verified last swap");
+    assert.equal(w.rpc.sentTransactions.length, 0, "no transaction may be sent");
+    assert.equal(sink.where((e) => e.type === "prepared").length, 0);
+    assert.equal(sink.where((e) => e.type === "submitted").length, 0);
   });
 });
 

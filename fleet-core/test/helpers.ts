@@ -297,6 +297,12 @@ export function makeSwapTxLike(opts: {
   coinPost: string;
   pcPre: string;
   pcPost: string;
+  /**
+   * Explicit failure recorded in `meta.err` — the classifier marks such a
+   * candidate `not_economic_swap` (failed_transaction), which is how a
+   * DEFINITIVE no-swap fixture is built. Absent → `meta.err: null`.
+   */
+  metaErr?: unknown;
 }): unknown {
   return {
     transaction: {
@@ -315,8 +321,9 @@ export function makeSwapTxLike(opts: {
     },
     meta: {
       // Correction 001 §2: only an EXPLICIT `meta.err === null` establishes
-      // success — an absent `err` property is unresolved evidence.
-      err: null,
+      // success — an absent `err` property is unresolved evidence, and a
+      // non-null `err` is a definitive failed transaction (never a swap).
+      err: opts.metaErr ?? null,
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
