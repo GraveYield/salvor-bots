@@ -214,6 +214,11 @@ export function makeSwapTxLike(opts: {
   coinPost: string;
   pcPre: string;
   pcPost: string;
+  /** Raydium V4 instruction tag. 9 = swapBaseIn (default); 3 = deposit
+   *  liquidity — used to build a DEFINITIVE no-swap history (IMPL-001
+   *  Correction 001: empty signature responses are INCOMPLETE evidence,
+   *  so a definitive no-swap scan needs provably non-swap candidates). */
+  instructionTag?: number;
 }): unknown {
   return {
     transaction: {
@@ -225,12 +230,15 @@ export function makeSwapTxLike(opts: {
           {
             programIdIndex: 0,
             accountKeyIndexes: [1, 2, 3],
-            data: bs58.encode(v4SwapTagData(9)),
+            data: bs58.encode(v4SwapTagData(opts.instructionTag ?? 9)),
           },
         ],
       },
     },
     meta: {
+      // Correction 001 §2: only an EXPLICIT `meta.err === null` establishes
+      // success — an absent `err` property is unresolved evidence.
+      err: null,
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
@@ -313,12 +321,21 @@ export class FakeConnection {
     this.accounts.delete(address.toBase58());
   }
 
-  /** Install a swap history entry for a pool (also installs the tx). */
+  /** Install a swap history entry for a pool (also installs the tx).
+   *  `liquidityOnly` installs one canonical LIQUIDITY (deposit, tag 3)
+   *  transaction instead — a complete scan whose every candidate is
+   *  provably not an economic swap, i.e. a DEFINITIVE `no_swap_in_scan`
+   *  under the IMPL-001 Correction 001 evidence contract (an empty
+   *  signature response is INCOMPLETE evidence, never definitive). */
   setSwapHistory(
     poolAddress: PublicKey,
     programId: PublicKey,
     pool: { coinVault: PublicKey; pcVault: PublicKey },
-    opts?: { lastSwapAgeSeconds?: number; neverSwapped?: boolean },
+    opts?: {
+      lastSwapAgeSeconds?: number;
+      neverSwapped?: boolean;
+      liquidityOnly?: boolean;
+    },
   ): void {
     const age = opts?.lastSwapAgeSeconds ?? 100 * 86_400; // 100 days stale
     if (opts?.neverSwapped) {
@@ -344,6 +361,7 @@ export class FakeConnection {
         coinPost: "1100000",
         pcPre: "100000",
         pcPost: "90000",
+        instructionTag: opts?.liquidityOnly ? 3 : 9,
       }),
     );
   }
@@ -464,6 +482,9 @@ export function installPool(
     coinIsWsol?: boolean;
     lastSwapAgeSeconds?: number;
     neverSwapped?: boolean;
+    /** Install a provably non-swap (liquidity) history instead — the
+     *  DEFINITIVE no-swap fixture (see FakeConnection.setSwapHistory). */
+    liquidityOnly?: boolean;
   },
 ): PoolFixture {
   const baseMint = derivedKey(0xb1, opts.poolAddress); // memecoin
@@ -524,6 +545,7 @@ export function installPool(
     {
       lastSwapAgeSeconds: opts.lastSwapAgeSeconds,
       neverSwapped: opts.neverSwapped,
+      liquidityOnly: opts.liquidityOnly,
     },
   );
 

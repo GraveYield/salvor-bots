@@ -50,10 +50,16 @@ export function scoreCandidate(
   candidate: ScoutCandidate,
   thresholds: ScoringThresholds,
 ): ScoutScoredCandidate {
-  // C1 inactivity margin.
-  const elapsedSeconds: bigint = candidate.activity.noSwapFound
-    ? thresholds.inactivitySeconds * 10n
-    : BigInt(Math.floor(Date.now() / 1000)) - BigInt(candidate.activity.lastSwapUnixTs);
+  // C1 inactivity margin. IMPL-001 Correction 001 §1: unresolved evidence
+  // gets NO inactivity margin — it cannot establish inactivity, so it
+  // must not be prioritized as if it did. (In the pipeline this is
+  // unreachable — the pre-filter fails C1 for unresolved records — the
+  // guard is defense-in-depth for direct callers.)
+  const elapsedSeconds: bigint = candidate.activity.unresolved
+    ? 0n
+    : candidate.activity.noSwapFound
+      ? thresholds.inactivitySeconds * 10n
+      : BigInt(Math.floor(Date.now() / 1000)) - BigInt(candidate.activity.lastSwapUnixTs);
   const inactivityMargin = Number(elapsedSeconds) / Number(thresholds.inactivitySeconds);
 
   // C3 TVL margin.

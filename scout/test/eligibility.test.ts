@@ -32,6 +32,7 @@ function activity(overrides?: Partial<ActivityRecord>): ActivityRecord {
     lastSwapSlot: 1,
     lastSwapSignature: "sig",
     noSwapFound: false,
+    unresolved: false,
     ...overrides,
   };
 }
@@ -91,6 +92,35 @@ describe("preFilterPool", () => {
       SPEC,
     );
     assert.equal(result.passed, true);
+  });
+
+  test("C1 NEVER passes from unresolved evidence (Correction 001 §1)", () => {
+    // Incomplete evidence (unresolved candidates, empty/pruned signature
+    // response, bounded scan) must never establish inactivity — the 10x
+    // `noSwapFound` shortcut is reserved for DEFINITIVE no_swap_in_scan.
+    const result = preFilterPool(
+      activity({ noSwapFound: false, lastSwapUnixTs: 0, unresolved: true }),
+      reserves(),
+      metadata(),
+      SPEC,
+    );
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.failedCriteria, ["C1-evidence-unresolved"]);
+    assert.equal(result.criteriaBitmap & CRITERION_INACTIVITY, 0);
+  });
+
+  test("C1 NEVER passes from unresolved evidence even when noSwapFound is set", () => {
+    // Defense-in-depth: an unresolved record that somehow also carries the
+    // no-swap flag must still be refused — unresolvedness wins.
+    const result = preFilterPool(
+      activity({ noSwapFound: true, lastSwapUnixTs: 0, unresolved: true }),
+      reserves(),
+      metadata(),
+      SPEC,
+    );
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.failedCriteria, ["C1-evidence-unresolved"]);
+    assert.equal(result.criteriaBitmap & CRITERION_INACTIVITY, 0);
   });
 
   test("C3 fails below the TVL floor", () => {

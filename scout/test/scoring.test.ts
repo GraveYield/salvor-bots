@@ -29,6 +29,7 @@ function candidate(overrides?: {
     lastSwapSlot: 1,
     lastSwapSignature: "sig",
     noSwapFound: false,
+    unresolved: false,
     ...overrides?.activity,
   };
   const reserves: ReserveRecord = {
@@ -78,6 +79,17 @@ describe("scoreCandidate", () => {
     assert.equal(noSwap, 10);
     assert.ok(withSwap > 1);
     assert.ok(withSwap < 10);
+  });
+
+  test("unresolved evidence gets NO inactivity margin (Correction 001 §1)", () => {
+    // Defense-in-depth: the pre-filter fails C1 for unresolved records, so
+    // the pipeline never scores them — a direct caller must not see the
+    // unresolved record prioritized as if it established inactivity.
+    const margin = scoreCandidate(
+      candidate({ activity: { noSwapFound: false, lastSwapUnixTs: 0, unresolved: true } }),
+      SPEC,
+    ).scoreBreakdown.inactivityMargin;
+    assert.equal(margin, 0);
   });
 
   test("a collapsed-looking pool scores above 1 on the C2 proxy", () => {

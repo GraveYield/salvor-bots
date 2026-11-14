@@ -64,18 +64,27 @@ export function preFilterPool(
   let bitmap = 0;
   const failed: string[] = [];
 
-  // C1 — inactivity. `noSwapFound` means the history scan found no swap
-  // at all: treat the pool as very old (the scan window itself is evidence
-  // of inactivity), but note the Scout refuses to ATTEST such pools (the
-  // C1 attestation needs a real last-swap timestamp — see evaluate.ts).
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  const elapsed = activity.noSwapFound
-    ? thresholds.inactivitySeconds * 10n
-    : now - BigInt(activity.lastSwapUnixTs);
-  if (elapsed >= thresholds.inactivitySeconds) {
-    bitmap |= CRITERION_INACTIVITY;
+  // C1 — inactivity. IMPL-001 Correction 001 §1: incomplete/unresolved
+  // last-swap evidence can never establish inactivity, so it can never
+  // pass C1 — not even through the `noSwapFound` shortcut below, which is
+  // reserved for a DEFINITIVE "complete scan, every candidate provably
+  // not an economic swap". `noSwapFound` means the history scan found no
+  // swap at all: treat the pool as very old (the scan window itself is
+  // evidence of inactivity), but note the Scout refuses to ATTEST such
+  // pools (the C1 attestation needs a real last-swap timestamp — see
+  // evaluate.ts).
+  if (activity.unresolved) {
+    failed.push("C1-evidence-unresolved");
   } else {
-    failed.push("C1-inactivity");
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const elapsed = activity.noSwapFound
+      ? thresholds.inactivitySeconds * 10n
+      : now - BigInt(activity.lastSwapUnixTs);
+    if (elapsed >= thresholds.inactivitySeconds) {
+      bitmap |= CRITERION_INACTIVITY;
+    } else {
+      failed.push("C1-inactivity");
+    }
   }
 
   // C2 — price collapse proxy. The pre-filter has no recorded LaunchPrice

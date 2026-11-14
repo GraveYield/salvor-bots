@@ -335,10 +335,14 @@ describe("ScoutSalvor end-to-end (fake RPC)", () => {
 
   test("pools without an attestable last swap are hard-failed and never submitted", async () => {
     const fake = new FakeConnection();
+    // DEFINITIVE no-swap history (liquidity-only scan): every candidate is
+    // provably not an economic swap, so the pre-filter's C1 10x heuristic
+    // legitimately passes and the pool reaches evaluation, where the
+    // missing attestable timestamp hard-fails it.
     installPool(fake, {
       poolAddress: poolKey(0xd4),
       tvlLamports: 2_000_000_000n,
-      neverSwapped: true,
+      liquidityOnly: true,
     });
     const sinks = [new MemoryReportSink()];
     const { sender, sent } = makeSender(fake);
@@ -361,6 +365,46 @@ describe("ScoutSalvor end-to-end (fake RPC)", () => {
     assert.ok(
       notes.some((n) => n !== null && /no-attestable-last-swap/.test(n)),
       `expected a no-attestable note in history, got: ${JSON.stringify(notes)}`,
+    );
+  });
+
+  test("incomplete last-swap evidence never passes C1 and is never submitted (Correction 001)", async () => {
+    const fake = new FakeConnection();
+    // Empty signature response ⇒ INCOMPLETE evidence (IMPL-001 Correction
+    // 001: an empty/pruned response is never a definitive no-swap). The
+    // pre-filter must fail C1 as evidence-unresolved — the pool must not
+    // reach evaluation, scoring, or submission.
+    installPool(fake, {
+      poolAddress: poolKey(0xd5),
+      tvlLamports: 2_000_000_000n,
+      neverSwapped: true,
+    });
+    const sinks = [new MemoryReportSink()];
+    const { sender, sent } = makeSender(fake);
+    const scout = new ScoutSalvor(
+      baseOptions(fake, sinks, {
+        dryRun: false,
+        activityOracle: ACTIVITY_ORACLE,
+        launchPriceOracle: LP_ORACLE,
+        operatorKeypair: OPERATOR,
+        txSender: sender,
+      }),
+    );
+
+    const result = await scout.runOnce();
+    assert.equal(result.phase1Submitted, 0);
+    assert.equal(sent.length, 0);
+    const record = scout.snapshot().find((r) => r.poolAddress.equals(poolKey(0xd5)));
+    assert.ok(record, "the incomplete-evidence pool must have a tracker record");
+    assert.equal(record?.state, "filtered-out", "pool must be pre-filtered out, not evaluated");
+    const notes = record?.history.map((h) => h.note).filter((n) => n !== null) ?? [];
+    assert.ok(
+      notes.some((n) => n !== null && /C1-evidence-unresolved/.test(n)),
+      `expected a C1-evidence-unresolved note in history, got: ${JSON.stringify(notes)}`,
+    );
+    assert.ok(
+      !scout.snapshot().some((r) => r.state === "evaluated-ineligible"),
+      "incomplete evidence must never be evaluated as ineligible-inactivity",
     );
   });
 

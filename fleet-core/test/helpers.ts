@@ -314,6 +314,9 @@ export function makeSwapTxLike(opts: {
       },
     },
     meta: {
+      // Correction 001 §2: only an EXPLICIT `meta.err === null` establishes
+      // success — an absent `err` property is unresolved evidence.
+      err: null,
       innerInstructions: [],
       loadedAddresses: { writable: [], readonly: [] },
       preTokenBalances: [
