@@ -5,8 +5,11 @@
 //
 //   * decode both ProtocolConfig PDAs and assert every spec default
 //     (the §3.2 tables — Charter-locked launch values)
-//   * run `evaluatePool` (read-only) against a real Raydium V4 pool —
-//     the SDK must walk all six criteria without throwing
+//   * run `evaluatePool` (read-only) as an SDK wiring/error-path smoke
+//     check against a placeholder pool address (devnet has no usable
+//     Raydium V4 pool) — asserts a recoverable error or
+//     `eligible === false`; this is NOT a live pool evaluation and does
+//     not validate pool liquidity or live pool state
 //
 // These tests are SKIPPED unless `DEVNET_RPC_URL` is set in the env, so
 // `pnpm -r test` stays green in CI / on a fresh sandbox with no network.
@@ -16,12 +19,16 @@
 //   DEVNET_RPC_URL=https://api.devnet.solana.com pnpm -r test
 //
 // Deployment: NS-3 (DR-002) — program IDs EFJpKt… / 7VxUGJ… deployed and
-// accepted on-chain 2026-11-12 (docs/DEVNET.md NS-3 record). If a config
-// PDA is absent on the targeted cluster, the config-decode tests below
-// explicitly report "deployment pending" instead of failing (fail-closed
-// behavior, exercised by the offline/absent-deployment case). The NS-2
-// deployment is preserved as a legacy record (docs/LEGACY_DEPLOYMENTS.md)
-// — do NOT re-point at it. Config is init-once — do NOT try to re-init.
+// accepted on-chain 2026-11-12 (docs/DEVNET.md NS-3 record). Missing
+// configuration is handled by skipping, never by a fail-closed rejection:
+// with DEVNET_RPC_URL set, a config-decode test whose config PDA is
+// absent on the targeted cluster skips itself via t.skip() with an
+// "NS-3 deployment pending" message; with DEVNET_RPC_URL absent, the
+// whole "devnet smoke (read-only)" describe suite is skipped up front,
+// so the offline case does NOT exercise the missing-config branch. The
+// NS-2 deployment is preserved as a legacy record
+// (docs/LEGACY_DEPLOYMENTS.md) — do NOT re-point at it. Config is
+// init-once — do NOT try to re-init.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
