@@ -134,7 +134,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
   });
 
   skipIf(
-    "evaluatePool walks all six criteria against a real Raydium V4 pool (read-only)",
+    "evaluatePool handles a placeholder pool through the SDK error path (read-only)",
     async () => {
       // A real mainnet Raydium V4 pool that exists on devnet? No — devnet
       // has no Raydium V4 pools. So we use a hardcoded test pool address
