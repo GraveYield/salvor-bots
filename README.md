@@ -8,7 +8,7 @@
 > runner (health/alerting/trails). SDK publish-ready (see `PUBLISH.md`).
 > **Companion:** the on-chain programs live at
 > [`github.com/GraveYield/graveyield-protocol`](https://github.com/GraveYield/graveyield-protocol)
-> (GraveScanner + GraveVault, Anchor 0.32.1 / Solana 3.0.10). This SDK
+> (GraveScanner + GraveVault, Anchor 1.2.2 / Solana 3.0.10). This SDK
 > drives those programs without an IDL or `anchor build` dependency.
 
 ## Overview
@@ -135,8 +135,10 @@ reconciliation, anomaly detection). The on-chain GraveScanner +
 GraveVault programs (devnet) are driven by the `@graveyield/sdk`
 package.
 
-Offline gates: **307 tests, 0 failures, 0 skipped** across all seven
-packages, plus clean `pnpm -r typecheck` and `pnpm -r build`.
+Offline gates: **372 tests, 0 failures, 0 skipped** across the root SDK
+mirror and all seven packages (256 workspace + 116 root; the
+DEVNET_RPC_URL-gated devnet smoke registers only when that env var is
+set), plus clean `pnpm -r typecheck` and `pnpm -r build`.
 
 Operational notes: executors default to dry-run and cannot submit in
 that mode (the code path throws); live execution additionally requires
@@ -220,8 +222,10 @@ unit mismatch, F5 — launch-price inversion, F7 — base58-string vs
 byte-order snapshot sorting); the fixes lived only in this repo while
 the protocol copy's tests pinned the buggy behavior. They were
 backported to the protocol SDK on 2026-10-24 (Phase 0 baseline, next
-step NS-4), and the drift gate now prevents a recurrence. Note this
-repo has no CI of its own yet — that is baseline next step NS-6.
+step NS-4), and the drift gate now prevents a recurrence. This repo
+runs its own CI (`.github/workflows/ci.yml`, added 2026-10-25): build +
+typecheck + lint + format + the full test suite, triggered on pushes
+and PRs to `main` (plus manual `workflow_dispatch`).
 
 ---
 
@@ -233,15 +237,16 @@ without manually constructing Anchor instructions or hand-rolling borsh.
 
 ## Status — Phase 8 complete
 
-All eight Phase-8 SDK operations are implemented and tested against the
-assigned NS-3 devnet identities (config PDAs are pre-deployment
-derivations; the live-decode smoke validates the deployment once the
-owner executes it — see the pending-deployment notes in
-`test/devnetSmoke.test.ts`):
+All eight Phase-8 SDK operations are implemented against the NS-3 devnet
+identities; verification methods differ per operation and are listed in
+the table below (config PDAs are the NS-3 `['protocol_config']`
+derivations — deployed and accepted on-chain 2026-11-12; the
+DEVNET_RPC_URL-gated smoke decodes the live ProtocolConfigs when run
+against devnet and self-skips offline — see `test/devnetSmoke.test.ts`):
 
 | Operation | Backing instruction(s) | Live-verified |
 |---|---|---|
-| `evaluatePool()` | Pure read; walks all six derelict-pool criteria (C1–C6) | ✔ devnet smoke (against NS-2; re-runs vs NS-3 post-deployment) |
+| `evaluatePool()` | Pure read; walks all six derelict-pool criteria (C1–C6) | offline suite + DEVNET-gated wiring smoke (not a live evaluation; NS-3 live re-run pending the live exercise) |
 | `recordLaunchPrice()` | `record_launch_price` + C2 precompile | ✔ (read-back of PDA) |
 | `phase1()` | `evaluate_pool_phase_1` + C1 precompile | ✔ (IDL-free pattern) |
 | `phase2()` | `evaluate_pool_phase_2` + fresh C1 precompile | ✔ (IDL-free pattern) |
@@ -348,7 +353,7 @@ The SDK mirrors these on-chain byte layouts exactly:
 - **Ed25519 precompile wire format**: 112 bytes (header + pk + sig) —
   the runtime's OWN layout, not the pre-Phase-6 "14-byte header" form.
 
-## NS-3 devnet program IDs (assigned; deployment PENDING)
+## NS-3 devnet program IDs (deployed and accepted 2026-11-12)
 
 | Program | NS-3 ID |
 |---|---|
@@ -357,17 +362,17 @@ The SDK mirrors these on-chain byte layouts exactly:
 | Scanner ProtocolConfig PDA | `5PK9pz4FcmiWGG3h81WquD2QpwuEj2GeAXxLGGMJkKKe` |
 | Vault ProtocolConfig PDA | `5aocH2UAFixQneb5LzoNf2m3b92AUc9zFP6oWEh6Vnda` |
 
-The config PDAs are the pre-deployment derivations of `['protocol_config']`
-under the assigned NS-3 IDs (bump 255). They become on-chain facts only
-after the owner executes the NS-3 deployment recorded in the protocol
-repo's `docs/DEVNET.md` — until then nothing on devnet answers at these
-addresses. The NS-2 deployment (`CuQZes…Ao54` / `Bd5smh…s7rg`, config PDAs
+The config PDAs are the `['protocol_config']` derivations under the NS-3
+IDs (bump 255); they have been live on-chain facts since the NS-3
+deployment was executed and accepted on 2026-11-12 (56/56 W2
+acceptance) — recorded in the protocol repo's `docs/DEVNET.md`. The NS-2
+deployment (`CuQZes…Ao54` / `Bd5smh…s7rg`, config PDAs
 `Fb6uv…QdiD` / `hyKk9…UipS`) is a preserved legacy record in
 `graveyield-protocol/docs/LEGACY_DEPLOYMENTS.md`.
 
-The devnet smoke tests assert the NS-3 derivations and (once the
-deployment exists) decode the live ProtocolConfigs against the spec
-default tables (`SCANNER_PROTOCOL_CONFIG_DEFAULTS` /
+The devnet smoke tests assert the NS-3 derivations and decode the live
+ProtocolConfigs against the spec default tables
+(`SCANNER_PROTOCOL_CONFIG_DEFAULTS` /
 `VAULT_PROTOCOL_CONFIG_DEFAULTS`).
 
 ## LOCKER-002

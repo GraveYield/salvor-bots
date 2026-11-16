@@ -5,8 +5,11 @@
 //
 //   * decode both ProtocolConfig PDAs and assert every spec default
 //     (the §3.2 tables — Charter-locked launch values)
-//   * run `evaluatePool` (read-only) against a real Raydium V4 pool —
-//     the SDK must walk all six criteria without throwing
+//   * run `evaluatePool` (read-only) as an SDK wiring/error-path smoke
+//     check against a placeholder pool address (devnet has no usable
+//     Raydium V4 pool) — asserts a recoverable error or
+//     `eligible === false`; this is NOT a live pool evaluation and does
+//     not validate pool liquidity or live pool state
 //
 // These tests are SKIPPED unless `DEVNET_RPC_URL` is set in the env, so
 // `pnpm -r test` stays green in CI / on a fresh sandbox with no network.
@@ -15,13 +18,17 @@
 //
 //   DEVNET_RPC_URL=https://api.devnet.solana.com pnpm -r test
 //
-// Deployment: NS-3 (DR-002) — program IDs EFJpKt… / 7VxUGJ… are ASSIGNED
-// but NOT yet deployed or initialized. Until the owner executes the NS-3
-// deployment (docs/DEVNET.md NS-3 record), the config-decode tests below
-// explicitly report "deployment pending" instead of failing: the config
-// PDAs cannot exist on chain yet. The NS-2 deployment is preserved as a
-// legacy record (docs/LEGACY_DEPLOYMENTS.md) — do NOT re-point at it.
-// Config is init-once — do NOT try to re-init.
+// Deployment: NS-3 (DR-002) — program IDs EFJpKt… / 7VxUGJ… deployed and
+// accepted on-chain 2026-11-12 (docs/DEVNET.md NS-3 record). Missing
+// configuration is handled by skipping, never by a fail-closed rejection:
+// with DEVNET_RPC_URL set, a config-decode test whose config PDA is
+// absent on the targeted cluster skips itself via t.skip() with a
+// missing-configuration message; with DEVNET_RPC_URL absent, the
+// whole "devnet smoke (read-only)" describe suite is skipped up front,
+// so the offline case does NOT exercise the missing-config branch. The
+// NS-2 deployment is preserved as a legacy record
+// (docs/LEGACY_DEPLOYMENTS.md) — do NOT re-point at it. Config is
+// init-once — do NOT try to re-init.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -65,7 +72,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     assert.equal(
       pda.toBase58(),
       "5PK9pz4FcmiWGG3h81WquD2QpwuEj2GeAXxLGGMJkKKe",
-      "scanner ProtocolConfig PDA must match the pre-deployment NS-3 derivation (['protocol_config'], bump 255)",
+      "scanner ProtocolConfig PDA must match the assigned NS-3 derivation (['protocol_config'], bump 255)",
     );
   });
 
@@ -74,7 +81,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     assert.equal(
       pda.toBase58(),
       "5aocH2UAFixQneb5LzoNf2m3b92AUc9zFP6oWEh6Vnda",
-      "vault ProtocolConfig PDA must match the pre-deployment NS-3 derivation (['protocol_config'], bump 255)",
+      "vault ProtocolConfig PDA must match the assigned NS-3 derivation (['protocol_config'], bump 255)",
     );
   });
 
@@ -83,8 +90,9 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     const cfg = await fetchScannerProtocolConfig(connection, pda);
     if (!cfg) {
       t.skip(
-        "NS-3 deployment pending: scanner ProtocolConfig not initialized on devnet yet " +
-          "(owner executes deployment per docs/DEVNET.md — this test validates it afterward)",
+        "scanner ProtocolConfig missing or uninitialized on the targeted cluster " +
+          "(NS-3 is deployed per docs/DEVNET.md — verify the targeted cluster/RPC; " +
+          "config is init-once — do NOT re-init)",
       );
       return;
     }
@@ -105,8 +113,9 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     const cfg = await fetchVaultProtocolConfig(connection, pda);
     if (!cfg) {
       t.skip(
-        "NS-3 deployment pending: vault ProtocolConfig not initialized on devnet yet " +
-          "(owner executes deployment per docs/DEVNET.md — this test validates it afterward)",
+        "vault ProtocolConfig missing or uninitialized on the targeted cluster " +
+          "(NS-3 is deployed per docs/DEVNET.md — verify the targeted cluster/RPC; " +
+          "config is init-once — do NOT re-init)",
       );
       return;
     }
@@ -127,7 +136,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
   });
 
   skipIf(
-    "evaluatePool walks all six criteria against a real Raydium V4 pool (read-only)",
+    "evaluatePool handles a placeholder pool through the SDK error path (read-only)",
     async () => {
       // A real mainnet Raydium V4 pool that exists on devnet? No — devnet
       // has no Raydium V4 pools. So we use a hardcoded test pool address
