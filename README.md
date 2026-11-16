@@ -237,8 +237,9 @@ without manually constructing Anchor instructions or hand-rolling borsh.
 
 ## Status — Phase 8 complete
 
-All eight Phase-8 SDK operations are implemented and tested against the
-NS-3 devnet identities (config PDAs are the NS-3 `['protocol_config']`
+All eight Phase-8 SDK operations are implemented against the NS-3 devnet
+identities; verification methods differ per operation and are listed in
+the table below (config PDAs are the NS-3 `['protocol_config']`
 derivations — deployed and accepted on-chain 2026-11-12; the
 DEVNET_RPC_URL-gated smoke decodes the live ProtocolConfigs when run
 against devnet and self-skips offline — see `test/devnetSmoke.test.ts`):

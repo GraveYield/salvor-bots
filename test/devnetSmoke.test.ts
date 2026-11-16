@@ -22,8 +22,8 @@
 // accepted on-chain 2026-11-12 (docs/DEVNET.md NS-3 record). Missing
 // configuration is handled by skipping, never by a fail-closed rejection:
 // with DEVNET_RPC_URL set, a config-decode test whose config PDA is
-// absent on the targeted cluster skips itself via t.skip() with an
-// "NS-3 deployment pending" message; with DEVNET_RPC_URL absent, the
+// absent on the targeted cluster skips itself via t.skip() with a
+// missing-configuration message; with DEVNET_RPC_URL absent, the
 // whole "devnet smoke (read-only)" describe suite is skipped up front,
 // so the offline case does NOT exercise the missing-config branch. The
 // NS-2 deployment is preserved as a legacy record
@@ -72,7 +72,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     assert.equal(
       pda.toBase58(),
       "5PK9pz4FcmiWGG3h81WquD2QpwuEj2GeAXxLGGMJkKKe",
-      "scanner ProtocolConfig PDA must match the pre-deployment NS-3 derivation (['protocol_config'], bump 255)",
+      "scanner ProtocolConfig PDA must match the assigned NS-3 derivation (['protocol_config'], bump 255)",
     );
   });
 
@@ -81,7 +81,7 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     assert.equal(
       pda.toBase58(),
       "5aocH2UAFixQneb5LzoNf2m3b92AUc9zFP6oWEh6Vnda",
-      "vault ProtocolConfig PDA must match the pre-deployment NS-3 derivation (['protocol_config'], bump 255)",
+      "vault ProtocolConfig PDA must match the assigned NS-3 derivation (['protocol_config'], bump 255)",
     );
   });
 
@@ -90,8 +90,9 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     const cfg = await fetchScannerProtocolConfig(connection, pda);
     if (!cfg) {
       t.skip(
-        "NS-3 deployment pending: scanner ProtocolConfig not initialized on devnet yet " +
-          "(owner executes deployment per docs/DEVNET.md — this test validates it afterward)",
+        "scanner ProtocolConfig missing or uninitialized on the targeted cluster " +
+          "(NS-3 is deployed per docs/DEVNET.md — verify the targeted cluster/RPC; " +
+          "config is init-once — do NOT re-init)",
       );
       return;
     }
@@ -112,8 +113,9 @@ describe("devnet smoke (read-only)", { skip: SKIP }, () => {
     const cfg = await fetchVaultProtocolConfig(connection, pda);
     if (!cfg) {
       t.skip(
-        "NS-3 deployment pending: vault ProtocolConfig not initialized on devnet yet " +
-          "(owner executes deployment per docs/DEVNET.md — this test validates it afterward)",
+        "vault ProtocolConfig missing or uninitialized on the targeted cluster " +
+          "(NS-3 is deployed per docs/DEVNET.md — verify the targeted cluster/RPC; " +
+          "config is init-once — do NOT re-init)",
       );
       return;
     }
