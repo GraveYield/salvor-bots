@@ -20,7 +20,7 @@ env:
 
 jobs:
   # Phase 1 (build/reliability): this repo had ZERO CI before Phase 1 —
-  # build, typecheck, and the 354-test suite (238 workspace + 116 root SDK
+  # build, typecheck, and the 372-test suite (256 workspace + 116 root SDK
   # mirror) ran only when a developer remembered to run them locally.
   verify:
     name: build + typecheck + lint + test
@@ -40,7 +40,7 @@ jobs:
       # byte-equal to graveyield-protocol/sdk/src) is excluded ("Scope:
       # 7 of 8 workspace projects" — verified 2026-10-25). Every root-level
       # gate therefore runs explicitly with -w. A bare `pnpm -r test` in CI
-      # would silently skip 116 of the 354 tests.
+      # would silently skip 116 of the 372 tests.
       - name: Build (root SDK mirror, then all workspace packages)
         run: |
           pnpm -w run build

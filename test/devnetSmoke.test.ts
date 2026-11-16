@@ -15,13 +15,13 @@
 //
 //   DEVNET_RPC_URL=https://api.devnet.solana.com pnpm -r test
 //
-// Deployment: NS-3 (DR-002) — program IDs EFJpKt… / 7VxUGJ… are ASSIGNED
-// but NOT yet deployed or initialized. Until the owner executes the NS-3
-// deployment (docs/DEVNET.md NS-3 record), the config-decode tests below
-// explicitly report "deployment pending" instead of failing: the config
-// PDAs cannot exist on chain yet. The NS-2 deployment is preserved as a
-// legacy record (docs/LEGACY_DEPLOYMENTS.md) — do NOT re-point at it.
-// Config is init-once — do NOT try to re-init.
+// Deployment: NS-3 (DR-002) — program IDs EFJpKt… / 7VxUGJ… deployed and
+// accepted on-chain 2026-11-12 (docs/DEVNET.md NS-3 record). If a config
+// PDA is absent on the targeted cluster, the config-decode tests below
+// explicitly report "deployment pending" instead of failing (fail-closed
+// behavior, exercised by the offline/absent-deployment case). The NS-2
+// deployment is preserved as a legacy record (docs/LEGACY_DEPLOYMENTS.md)
+// — do NOT re-point at it. Config is init-once — do NOT try to re-init.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
