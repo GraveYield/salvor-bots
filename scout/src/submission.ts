@@ -45,7 +45,7 @@ import {
   buildLaunchPriceMessage,
   buildEvaluatePoolPhase1Ix,
   buildRecordLaunchPriceIx,
-  fetchSlotHash,
+  fetchRecentSlotHash,
   IX_DATA_MSG_OFFSET,
   type LaunchPriceDerivation,
 } from "@graveyield/sdk";
@@ -128,13 +128,19 @@ export async function buildPhase1Transaction(opts: {
   writer: PublicKey;
   fee: FeeSettings;
 }): Promise<Phase1TxBundle> {
-  const issuedSlot = Number(await opts.connection.getSlot());
-  const slotHash = await fetchSlotHash(opts.connection, issuedSlot);
-  if (!slotHash) {
-    throw new Error(
-      `could not fetch slot hash for issuance slot ${issuedSlot} — attestation cannot be anchored`,
-    );
+  // Canonical (slot, hash) pairing (graveyield-protocol#116): the pair
+  // comes from ONE validated SlotHashes sysvar snapshot as a REAL entry.
+  // Never getBlock(slot).blockhash (not the sysvar entry — finding F1,
+  // 6030 on-chain), never a slot manufactured by getSlot() arithmetic
+  // (slots can be skipped). The returned slot is placed into the signed
+  // attestation message and the returned hash into the matching field —
+  // exactly the pair the on-chain verifier resolves from the same sysvar.
+  const recent = await fetchRecentSlotHash(opts.connection);
+  if (!recent) {
+    throw new Error("no valid SlotHashes sysvar entry available — attestation cannot be anchored");
   }
+  const issuedSlot = recent.slot;
+  const slotHash = recent.hash;
 
   const attestationMessage = buildAttestationMessage({
     ammProgramId: RAYDIUM_V4_PROGRAM_ID,
