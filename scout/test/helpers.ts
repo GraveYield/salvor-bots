@@ -27,6 +27,10 @@ export const FIXED_NOW = Math.floor(Date.now() / 1000);
 /** Fixed current slot / epoch for the fake connection. */
 export const FIXED_SLOT = 1_000_000;
 
+// Canonical SlotHashes sysvar + owner (the SDK reader's source of truth).
+const SLOT_HASHES_SYSVAR = new PublicKey("SysvarS1otHashes111111111111111111111111111");
+const SYSVAR_PROGRAM_ID = new PublicKey("Sysvar1111111111111111111111111111111111111");
+
 // -------------------------------------------------------- account encoders
 
 /** Encode a GraveScanner ProtocolConfig account (layout: accountDecoders.ts). */
@@ -316,6 +320,33 @@ export class FakeConnection {
       rentEpoch: 0n,
     } as AccountInfo<Uint8Array>);
   }
+
+  /**
+   * Seed a REAL SlotHashes sysvar snapshot the canonical SDK reader
+   * resolves (`fetchSlotHash` / `fetchRecentSlotHash`): the
+   * `SysvarS1otHashes…` account, Sysvar-program owner, non-executable,
+   * bincode `Vec<(u64 slot, [u8;32] hash)>` — newest-first, strictly
+   * descending. Entries are `(slot, fillByte)`; the hash bytes carry the
+   * slot LE in their first 8 bytes so per-slot hashes are distinct.
+   */
+  setSlotHashes(entries: ReadonlyArray<readonly [number, number]>): void {
+    const buf = Buffer.alloc(8 + entries.length * 40);
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    view.setBigUint64(0, BigInt(entries.length), true);
+    entries.forEach(([slot, fill], i) => {
+      view.setBigUint64(8 + i * 40, BigInt(slot), true);
+      const hash = new Uint8Array(32).fill(fill);
+      new DataView(hash.buffer).setBigUint64(0, BigInt(slot), true);
+      buf.set(hash, 8 + i * 40 + 8);
+    });
+    this.setAccount(SLOT_HASHES_SYSVAR, buf, SYSVAR_PROGRAM_ID);
+  }
+
+  /** Default canonical snapshot: newest entry AT the fake's current slot. */
+  private readonly seededSlotHashes = this.setSlotHashes([
+    [FIXED_SLOT, 0xd4],
+    [FIXED_SLOT - 2, 0xd2],
+  ]);
 
   deleteAccount(address: PublicKey): void {
     this.accounts.delete(address.toBase58());

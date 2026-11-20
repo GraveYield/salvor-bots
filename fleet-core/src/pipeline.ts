@@ -47,7 +47,7 @@ import {
   buildEd25519VerifyInstruction,
   buildEvaluatePoolPhase2Ix,
   buildSalvagePoolIx,
-  fetchSlotHash,
+  fetchRecentSlotHash,
   IX_DATA_MSG_OFFSET,
   RAYDIUM_V4_PROGRAM_ID,
   decodeSalvageReceipt,
@@ -676,13 +676,22 @@ export class ExecutionPipeline {
   }): Promise<PreparedTransaction> {
     const { rv } = opts;
     const connection = this.client.connection;
-    const issuedSlot = Number(await connection.getSlot());
-    const slotHash = await fetchSlotHash(connection, issuedSlot);
-    if (!slotHash) {
+    // Canonical (slot, hash) pairing (graveyield-protocol#116): the pair
+    // comes from ONE validated SlotHashes sysvar snapshot as a REAL entry.
+    // Never getBlock(slot).blockhash (not the sysvar entry — finding F1,
+    // 6030 on-chain), never a slot manufactured by getSlot() arithmetic
+    // (slots can be skipped; a manufactured slot may not even exist in
+    // the sysvar). The returned slot goes into the signed message and the
+    // returned hash into the matching field — exactly the pair the
+    // on-chain verifier resolves from the same sysvar.
+    const recent = await fetchRecentSlotHash(connection);
+    if (!recent) {
       throw new Error(
-        `slot hash unavailable for slot ${issuedSlot} — attestation cannot be anchored`,
+        "no valid SlotHashes sysvar entry available — attestation cannot be anchored",
       );
     }
+    const issuedSlot = recent.slot;
+    const slotHash = recent.hash;
 
     // The last-swap timestamp must be REAL: re-derive from Raydium V4
     // history (SDK, fail-closed) — never from the envelope. Legacy

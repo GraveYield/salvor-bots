@@ -37,7 +37,7 @@ import {
   signAttestation,
   defaultTxSender,
 } from "../src/index.js";
-import { FakeConnection, encodeScannerConfig, encodeVaultConfig } from "./helpers.js";
+import { FakeConnection, encodeScannerConfig, encodeVaultConfig, FIXED_SLOT } from "./helpers.js";
 
 const SCANNER = new PublicKey(new Uint8Array(32).fill(0x5d));
 const VAULT = new PublicKey(new Uint8Array(32).fill(0x5e));
@@ -176,8 +176,15 @@ describe("buildPhase1Transaction", () => {
     });
     const parsed = parseAttestationMessage(bundle.attestationMessage);
     assert.equal(parsed.lastSwapUnixTs, 1_234_567_890);
-    // The slot hash embedded is the fake blockhash of the issuance slot.
-    assert.deepEqual(
+    // The embedded pair is EXACTLY the seeded SlotHashes sysvar entry
+    // (F1 fix): the newest entry's slot and its OWN hash — never the
+    // fake blockhash, which is not the sysvar entry and reverted 6030
+    // on-chain when the SDK sourced attestations from it.
+    assert.equal(parsed.issuedSlot, FIXED_SLOT);
+    const expectedHash = new Uint8Array(32).fill(0xd4);
+    new DataView(expectedHash.buffer).setBigUint64(0, BigInt(FIXED_SLOT), true);
+    assert.deepEqual(Buffer.from(parsed.slotHash), Buffer.from(expectedHash));
+    assert.notDeepEqual(
       Buffer.from(parsed.slotHash),
       Buffer.from(new PublicKey(fake.blockhash).toBytes()),
     );
