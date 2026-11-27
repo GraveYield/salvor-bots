@@ -19,6 +19,11 @@ import assert from "node:assert/strict";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { createHash } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import BN from "bn.js";
 
 import {
@@ -38,16 +43,23 @@ import {
   buildEnvelope,
   DEFAULT_TUNABLES,
   type AttestationSource,
+  type ClaimsSnapshotter,
   type ExecutionPolicy,
+  type SnapshotterRequest,
+  type VerifiedClaimsSnapshot,
+  ClaimsSnapshotterError,
+  RustCliClaimsSnapshotter,
 } from "../src/index.js";
 import {
   FIXED_NOW_MS,
+  FIXED_SLOT,
   SCANNER_ID,
   VAULT_ID,
   encodeSalvageReceipt,
   makeSwapTxLike,
 } from "./helpers.js";
-import { buildWorld } from "./world.js";
+import { buildClaimsArtifact, buildSinkLedger } from "./fixtures/artifactFactory.js";
+import { buildWorld, type World } from "./world.js";
 
 const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
@@ -87,11 +99,38 @@ function healthyRouteAdapter() {
   }));
 }
 
+/**
+ * A pipeline-behavior stub implementing the ClaimsSnapshotter seam
+ * directly (bypassing verification — verification coverage lives in
+ * snapshotter.test.ts and the end-to-end CLI test below).
+ */
+function stubSnapshotter(
+  world: World,
+  opts?: { failWith?: ClaimsSnapshotterError; artifactSha256?: string },
+): ClaimsSnapshotter {
+  return {
+    async produceSnapshot(req: SnapshotterRequest): Promise<VerifiedClaimsSnapshot> {
+      if (opts?.failWith) throw opts.failWith;
+      void req;
+      return {
+        root: new Uint8Array(32).fill(7),
+        totalSupply: world.lpSupply,
+        snapshotSlot: FIXED_SLOT,
+        holderCount: world.holders.length,
+        artifactSha256: opts?.artifactSha256 ?? "stub-digest",
+        sinkLedgerSha256: "stub-ledger-digest",
+        sinkLedgerId: "GY-SINK-STUB",
+      };
+    },
+  };
+}
+
 function makePipeline(opts: {
   world: ReturnType<typeof buildWorld>;
   pol?: ExecutionPolicy;
   route?: FakeRouteAdapter;
   sink?: MemoryEventSink;
+  snapshotter?: ClaimsSnapshotter;
 }): { pipeline: ExecutionPipeline; route: FakeRouteAdapter; sink: MemoryEventSink } {
   const route = opts.route ?? healthyRouteAdapter();
   const sink = opts.sink ?? new MemoryEventSink();
@@ -100,6 +139,7 @@ function makePipeline(opts: {
     policy: opts.pol ?? policy(),
     routeAdapter: route,
     eventSink: sink,
+    snapshotter: opts.snapshotter ?? stubSnapshotter(opts.world),
     txSender: opts.world.rpc.fakeSend.bind(opts.world.rpc),
     now: NOW,
   });
@@ -471,25 +511,18 @@ describe("ExecutionPipeline — safety gates", () => {
       salvorLpAmount: 1_000_000n,
       certExpiresAt: NOW_SEC + 3_600n,
     });
-    // Deterministic race injection: the FIRST getProgramAccounts call is
-    // the snapshot enumeration — mutate the LP mint supply right after
-    // it so the pipeline's re-pin read (which follows the snapshot)
-    // observes drift.
-    const originalGpa = w.rpc.getProgramAccounts.bind(w.rpc);
-    let mutated = false;
-    w.rpc.getProgramAccounts = async (programId: PublicKey, opts?: never) => {
-      const out = await originalGpa(programId, opts);
-      if (!mutated) {
-        mutated = true;
-        const buf = new Uint8Array(82);
-        const view = new DataView(buf.buffer);
-        view.setBigUint64(36, 9_500_000n, true);
-        view.setUint8(44, 9);
-        view.setUint8(45, 1);
-        w.rpc.setAccount(w.lpMint, buf, TOKEN_PROGRAM);
-      }
-      return out;
-    };
+    // Deterministic drift injection (D3): the claims snapshotter already
+    // produced an artifact pinning the ORIGINAL supply (the stub reports
+    // world.lpSupply); the LP mint supply then moves BEFORE preparation
+    // continues. The pipeline's re-pin read (which follows the snapshot)
+    // must observe the drift and fail closed — the on-chain 7018 check,
+    // caught early.
+    const buf = new Uint8Array(82);
+    const view = new DataView(buf.buffer);
+    view.setBigUint64(36, 9_500_000n, true);
+    view.setUint8(44, 9);
+    view.setUint8(45, 1);
+    w.rpc.setAccount(w.lpMint, buf, TOKEN_PROGRAM);
     const { pipeline } = makePipeline({ world: w });
     const out = await pipeline.prepare({
       envelope: salvageableEnvelope(w),
@@ -606,6 +639,7 @@ describe("ExecutionPipeline — simulation + submission", () => {
       liveEnablement: { enabled: true, acknowledgedBy: "test-operator" },
       routeAdapter: healthyRouteAdapter(),
       eventSink: new MemoryEventSink(),
+      snapshotter: stubSnapshotter(w),
       txSender: w.rpc.fakeSend.bind(w.rpc),
       now: NOW,
     });
@@ -659,6 +693,7 @@ describe("ExecutionPipeline — simulation + submission", () => {
       liveEnablement: { enabled: true, acknowledgedBy: "test-operator" },
       routeAdapter: healthyRouteAdapter(),
       eventSink: new MemoryEventSink(),
+      snapshotter: stubSnapshotter(w),
       txSender: w.rpc.fakeSend.bind(w.rpc),
       now: NOW,
     });
@@ -692,3 +727,140 @@ async function KeypairShim(): Promise<Keypair> {
 
 // silence unused import (decodeGraveYieldErrorCode exercised indirectly via the sim path)
 void decodeGraveYieldErrorCode;
+
+// ---------------------------------------------------------------- D3 (claims
+// snapshot production via the Rust CLI boundary)
+
+describe("ExecutionPipeline — D3 claims snapshot production (Rust CLI is the sole producer)", () => {
+  const MOCK_CLI = fileURLToPath(
+    new URL("./fixtures/bin/mock-snapshotter-cli.mjs", import.meta.url),
+  );
+
+  test("the salvage root comes exclusively from the verified Rust claims artifact (end-to-end through the CLI boundary)", async () => {
+    const w = await buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
+    // A governed sink ledger + a valid D2 claims-grade artifact for the
+    // world's EXACT pool/AMM/mint and holder set (fixture-grade: the SDK
+    // tree is the byte-locked port of the Rust tree). The sink balance is
+    // part of the 10M world supply, so the leaf set shrinks accordingly —
+    // the artifact's closing identity must reconcile to the live 10M.
+    const sinkOwner = new PublicKey(new Uint8Array(32).fill(0x5a));
+    const sinkAccount = new PublicKey(new Uint8Array(32).fill(0x5b));
+    const sinkBalance = 50_000n; // part of the 10M world supply
+    const leafHolders = [
+      { owner: w.holders[0]!.owner, balance: w.holders[0]!.balance },
+      { owner: w.holders[1]!.owner, balance: w.holders[1]!.balance - sinkBalance },
+    ];
+    const ledger = buildSinkLedger({
+      pool: w.poolAddress,
+      amm: RAYDIUM_V4_PROGRAM_ID,
+      lpMint: w.lpMint,
+      entries: [{ owner: sinkOwner, tokenAccount: sinkAccount, rawBalance: sinkBalance }],
+    });
+    const { text: artifactText } = buildClaimsArtifact({
+      pool: w.poolAddress,
+      ammProgramId: RAYDIUM_V4_PROGRAM_ID,
+      lpMint: w.lpMint,
+      snapshotSlot: FIXED_SLOT,
+      holders: leafHolders,
+      sinkExclusions: [{ owner: sinkOwner, balance: sinkBalance }],
+      sinkLedger: { bytes: ledger.bytes, ledgerId: ledger.ledgerId },
+    });
+    const dir = mkdtempSync(join(tmpdir(), "gy-pipeline-d3-"));
+    const ledgerPath = join(dir, "sink-ledger.json");
+    const artifactPath = join(dir, "artifact.json");
+    writeFileSync(ledgerPath, ledger.bytes);
+    writeFileSync(artifactPath, artifactText);
+
+    const snapshotter = new RustCliClaimsSnapshotter({
+      executablePath: MOCK_CLI,
+      rpcUrl: "http://127.0.0.1:8899",
+      commitment: "confirmed",
+      sinkLedgerPath: ledgerPath,
+      timeoutMs: 10_000,
+      env: { PATH: process.env["PATH"] ?? "", GY_MOCK_ARTIFACT: artifactPath },
+    });
+    const { pipeline, sink } = makePipeline({ world: w, snapshotter });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
+    assert.ok(out.ok, `prepare failed: ${out.failureClass} ${out.reason}`);
+    const json = JSON.parse(artifactText) as { merkle_root: string };
+    // The root baked into the transaction IS the verified artifact's root.
+    assert.equal(
+      Buffer.from(out.prepared!.snapshotSummary.merkleRoot).toString("hex"),
+      json.merkle_root,
+    );
+    assert.equal(out.prepared!.snapshotSummary.totalSupply, 10_000_000n);
+    assert.equal(out.prepared!.snapshotSummary.holderCount, leafHolders.length);
+    assert.equal(
+      out.prepared!.snapshotSummary.artifactSha256,
+      createHash("sha256").update(artifactText, "utf8").digest("hex"),
+    );
+    // Structured operational reporting carries the artifact digest.
+    const preparedEvent = sink.events.find((e) => e.type === "prepared");
+    assert.ok(preparedEvent);
+    assert.equal(
+      preparedEvent.data["artifactSha256"],
+      out.prepared!.snapshotSummary.artifactSha256,
+    );
+    assert.ok("snapshotSlot" in preparedEvent.data);
+  });
+
+  test("a snapshotter failure is terminal for the attempt (snapshot-producer) — no TS fallback", async () => {
+    const w = await buildWorld({
+      wsolReserve: 5_000_000_000n,
+      memecoinReserve: 1_000_000n,
+      lpSupply: 10_000_000n,
+      salvorLpAmount: 1_000_000n,
+      certExpiresAt: NOW_SEC + 3_600n,
+    });
+    const { pipeline, sink } = makePipeline({
+      world: w,
+      snapshotter: stubSnapshotter(w, {
+        failWith: new ClaimsSnapshotterError(
+          "nonzero-exit",
+          "grave-snapshotter-cli exited with code 1",
+          {
+            exitCode: 1,
+          },
+        ),
+      }),
+    });
+    const out = await pipeline.prepare({
+      envelope: salvageableEnvelope(w),
+      salvor: w.salvor.publicKey,
+    });
+    assert.equal(out.ok, false);
+    assert.equal(out.failureClass, "snapshot-producer");
+    // Terminal: not in the retryable set.
+    const { isRetryable } = await import("../src/events.js");
+    assert.equal(isRetryable("snapshot-producer"), false);
+    // Structured reporting identifies the producer + failure category.
+    const event = sink.events.find((e) => e.type === "revalidation-rejected");
+    assert.ok(event);
+    assert.equal(event.data["producer"], "grave-snapshotter-cli");
+    assert.equal(event.data["producerFailureCategory"], "nonzero-exit");
+    assert.equal(event.data["pool"], w.poolAddress.toBase58());
+  });
+
+  test("the live preparation path cannot obtain a root from the TypeScript snapshot producer (static source gate)", async () => {
+    // fleet-core/src/pipeline.ts must not reference the SDK's TS snapshot
+    // producer AT ALL: no snapshotLpHolders, no SnapshotResult.
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/pipeline.ts", import.meta.url)),
+      "utf8",
+    );
+    assert.ok(!source.includes("snapshotLpHolders"), "pipeline must not import snapshotLpHolders");
+    assert.ok(!source.includes("SnapshotResult"), "pipeline must not use SnapshotResult");
+    // The root must be taken from the verified artifact material.
+    assert.match(source, /snapshot\.root/);
+    assert.match(source, /this\.snapshotter\.produceSnapshot/);
+  });
+});

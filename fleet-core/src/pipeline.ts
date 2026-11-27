@@ -9,9 +9,14 @@
 //   1. Fresh on-chain revalidation BEFORE anything is built
 //      (`revalidateOpportunity` — the envelope's state is never trusted).
 //   2. A live-derived 13-account Raydium V4 set (`deriveV4CpiAccounts`).
-//   3. A complete LP-holder snapshot via the SDK (completeness-gated),
-//      with the LIVE LP supply re-pinned against the snapshot before a
+//   3. A CLAIMS-GRADE LP-holder snapshot produced by the Rust
+//      `grave-snapshotter-cli` (the SOLE production claims-snapshot
+//      producer — D3): the sealed artifact is verified claims-grade
+//      (schema, identity binding, governed sink-ledger + locker-evidence
+//      provenance, full Merkle re-derivation) before its root is accepted,
+//      and the LIVE LP supply is re-pinned against the artifact before a
 //      transaction may be built (the on-chain 7018 check, caught early).
+//      There is NO TypeScript snapshot fallback in this path.
 //   4. A real route quote through the shared RouteAdapter, freshness-
 //      checked, with the min-output floor re-derived by the estimator
 //      (never the adapter's own floor), slippage only ever tightened
@@ -54,15 +59,18 @@ import {
   decodeGraveYieldError,
   decodeGraveYieldErrorCode,
   simulateTransaction,
-  snapshotLpHolders,
   salvageReceiptPda,
   eligibilityCertPda,
   readLpMintSupply,
   WSOL_MINT,
-  type SnapshotResult,
   type SdkSimulationResult,
 } from "@graveyield/sdk";
 
+import {
+  type ClaimsSnapshotter,
+  type VerifiedClaimsSnapshot,
+  ClaimsSnapshotterError,
+} from "./snapshotter.js";
 import { estimateSalvageEconomics, type EconomicEstimate } from "./estimator.js";
 import type { ExecutionPolicy, LiveEnablement } from "./policy.js";
 import { validatePolicy, planFees } from "./policy.js";
@@ -121,7 +129,8 @@ export interface SalvageContext {
   /** Salvor signer's public key (fee payer + LP burn source owner). */
   salvor: PublicKey;
   route: RouteQuote;
-  snapshot: SnapshotResult;
+  /** The verified Rust claims artifact material (D3). */
+  snapshot: VerifiedClaimsSnapshot;
   estimate: EconomicEstimate;
 }
 
@@ -145,6 +154,8 @@ export interface PreparedTransaction {
     salvorLpAmount: bigint;
     holderCount: number;
     snapshotSlot: number;
+    /** SHA-256 over the exact verified artifact bytes (D3 provenance). */
+    artifactSha256: string;
   };
   minQuoteOutputLamports: bigint;
   /** The route actually embedded (post-validation). */
@@ -187,6 +198,12 @@ export interface PipelineOptions {
   liveEnablement?: LiveEnablement | null;
   routeAdapter: RouteAdapter;
   eventSink: FleetEventSink;
+  /**
+   * The claims-snapshot producer (D3). Production wiring:
+   * `RustCliClaimsSnapshotter` over the built `grave-snapshotter-cli`.
+   * REQUIRED — there is no default producer and no TypeScript fallback.
+   */
+  snapshotter: ClaimsSnapshotter;
   /** Transaction sender — injectable for tests. */
   txSender?: TxSender;
   /** Now (epoch ms) — injectable for deterministic tests. */
@@ -200,6 +217,7 @@ export interface PipelineOptions {
 export class ExecutionPipeline {
   readonly client: GraveYieldClient;
   readonly policy: ExecutionPolicy;
+  readonly snapshotter: ClaimsSnapshotter;
   private readonly sender: TxSender;
   private readonly routes: RouteAdapter;
   private readonly sink: FleetEventSink;
@@ -214,6 +232,7 @@ export class ExecutionPipeline {
     this.sink = opts.eventSink;
     this.sender = opts.txSender ?? defaultTxSender;
     this.now = opts.now ?? Date.now;
+    this.snapshotter = opts.snapshotter;
   }
 
   private emit(
@@ -447,27 +466,53 @@ export class ExecutionPipeline {
       return { ok: false, stage: "revalidated", failureClass: "missing-accounts", reason };
     }
 
-    // 4. Complete LP-holder snapshot (SDK; completeness-gated) + live
-    //    supply re-pin (the on-chain 7018 check, caught early).
-    let snapshot: SnapshotResult;
+    // 4. CLAIMS-GRADE SNAPSHOT (D3): the Rust `grave-snapshotter-cli` is
+    //    the SOLE production claims-snapshot producer. The pipeline asks
+    //    the configured snapshotter for a fresh, verified, run-bound
+    //    artifact for THIS pool/AMM/mint; the snapshotter runs the CLI as
+    //    a bounded subprocess, verifies the sealed artifact claims-grade
+    //    (schema, identity, governed sink ledger + locker evidence,
+    //    full Merkle re-derivation), and returns the root ONLY from the
+    //    verified artifact. Every failure here is terminal for this
+    //    preparation attempt: no TypeScript fallback, no retry that
+    //    changes the evidence package, no root regeneration under the
+    //    same attempt identity. The live supply re-pin (the on-chain 7018
+    //    check, caught early) follows.
+    let snapshot: VerifiedClaimsSnapshot;
     try {
-      snapshot = await snapshotLpHolders(this.client.connection, pool);
+      snapshot = await this.snapshotter.produceSnapshot({
+        pool,
+        ammProgramId: amm,
+        lpMint: rv.pool.lpMint,
+      });
     } catch (err) {
+      const category =
+        err instanceof ClaimsSnapshotterError ? err.category : "unknown-producer-failure";
+      const context = err instanceof ClaimsSnapshotterError ? err.context : {};
+      // Structured operational reporting: pool, snapshot slot, artifact
+      // digest, and failure category — never the RPC URL or arguments.
       this.emit(
         "revalidation-rejected",
-        { reason: String(err) },
-        { identity, failureClass: "snapshot-incomplete" },
+        {
+          reason: err instanceof Error ? err.message : String(err),
+          producer: "grave-snapshotter-cli",
+          producerFailureCategory: category,
+          pool: pool.toBase58(),
+          snapshotSlot: context.snapshotSlot,
+          artifactSha256: context.artifactSha256,
+        },
+        { identity, failureClass: "snapshot-producer" },
       );
       return {
         ok: false,
         stage: "revalidated",
-        failureClass: "snapshot-incomplete",
-        reason: String(err),
+        failureClass: "snapshot-producer",
+        reason: `claims snapshotter failure [${category}]`,
       };
     }
     const liveSupply = await readLpMintSupply(this.client.connection, rv.pool.lpMint);
-    if (liveSupply !== BigInt(snapshot.snapshot.totalSupply.toString(10))) {
-      const reason = `LP supply moved between snapshot and preparation (${snapshot.snapshot.totalSupply.toString()} → ${liveSupply.toString()}) — re-snapshotting is required`;
+    if (liveSupply !== snapshot.totalSupply) {
+      const reason = `LP supply moved between snapshot and preparation (${snapshot.totalSupply.toString()} → ${liveSupply.toString()}) — re-snapshotting is required`;
       this.emit("revalidation-rejected", { reason }, { identity, failureClass: "state-changed" });
       return { ok: false, stage: "revalidated", failureClass: "state-changed", reason };
     }
@@ -560,8 +605,8 @@ export class ExecutionPipeline {
       salvorLpTokenAccount: getAssociatedTokenAddressSync(rv.pool.lpMint, salvor),
       lpMint: rv.pool.lpMint,
       memecoinMint: rv.memecoinMint,
-      lpSnapshotMerkleRoot: snapshot.tree.root(),
-      lpTotalSupplyAtSnapshot: BigInt(snapshot.snapshot.totalSupply.toString(10)),
+      lpSnapshotMerkleRoot: snapshot.root,
+      lpTotalSupplyAtSnapshot: snapshot.totalSupply,
       salvorLpAmount,
       minQuoteOutputLamports: estimate.minQuoteOutputLamports ?? 0n,
       maxSlippageBpsOverride: this.policy.slippageBpsOverride ?? null,
@@ -614,6 +659,8 @@ export class ExecutionPipeline {
         computeUnitLimit: prepared.computeUnitLimit,
         holderCount: prepared.snapshotSummary.holderCount,
         snapshotSupply: prepared.snapshotSummary.totalSupply.toString(),
+        snapshotSlot: prepared.snapshotSummary.snapshotSlot,
+        artifactSha256: prepared.snapshotSummary.artifactSha256,
         salvorLpAmount: prepared.snapshotSummary.salvorLpAmount.toString(),
         minQuoteOutputLamports: prepared.minQuoteOutputLamports.toString(),
         routeAccounts: prepared.route.routeAccounts.length,
@@ -629,7 +676,7 @@ export class ExecutionPipeline {
     rv: RevalidatedOpportunity;
     salvageIxInput: Parameters<typeof buildSalvagePoolIx>[0];
     feePrice: BN;
-    snapshot: SnapshotResult;
+    snapshot: VerifiedClaimsSnapshot;
     estimate: EconomicEstimate;
     route: RouteQuote;
   }): Promise<PreparedTransaction> {
@@ -649,11 +696,12 @@ export class ExecutionPipeline {
       feeMicroLamportsPerCu: opts.feePrice,
       computeUnitLimit: this.policy.computeUnitLimit,
       snapshotSummary: {
-        merkleRoot: opts.snapshot.tree.root(),
-        totalSupply: BigInt(opts.snapshot.snapshot.totalSupply.toString(10)),
+        merkleRoot: opts.snapshot.root,
+        totalSupply: opts.snapshot.totalSupply,
         salvorLpAmount: BigInt(opts.salvageIxInput.salvorLpAmount.toString()),
-        holderCount: opts.snapshot.snapshot.holders.length,
+        holderCount: opts.snapshot.holderCount,
         snapshotSlot: opts.snapshot.snapshotSlot,
+        artifactSha256: opts.snapshot.artifactSha256,
       },
       minQuoteOutputLamports: opts.estimate.minQuoteOutputLamports ?? 0n,
       route: opts.route,
@@ -669,7 +717,7 @@ export class ExecutionPipeline {
     rv: RevalidatedOpportunity;
     salvageIxInput: Parameters<typeof buildSalvagePoolIx>[0];
     feePrice: BN;
-    snapshot: SnapshotResult;
+    snapshot: VerifiedClaimsSnapshot;
     estimate: EconomicEstimate;
     route: RouteQuote;
     attestationSource: AttestationSource;
@@ -761,11 +809,12 @@ export class ExecutionPipeline {
       feeMicroLamportsPerCu: opts.feePrice,
       computeUnitLimit: this.policy.computeUnitLimit,
       snapshotSummary: {
-        merkleRoot: opts.snapshot.tree.root(),
-        totalSupply: BigInt(opts.snapshot.snapshot.totalSupply.toString(10)),
+        merkleRoot: opts.snapshot.root,
+        totalSupply: opts.snapshot.totalSupply,
         salvorLpAmount: BigInt(opts.salvageIxInput.salvorLpAmount.toString()),
-        holderCount: opts.snapshot.snapshot.holders.length,
+        holderCount: opts.snapshot.holderCount,
         snapshotSlot: opts.snapshot.snapshotSlot,
+        artifactSha256: opts.snapshot.artifactSha256,
       },
       minQuoteOutputLamports: opts.estimate.minQuoteOutputLamports ?? 0n,
       route: opts.route,

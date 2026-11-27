@@ -45,12 +45,14 @@ private transaction-construction path.
   \`remaining_accounts\` from the LIVE AmmInfo + Serum market bytes
   (fork-proven offsets), validating owner programs, mint binding, and
   the market vault-signer PDA. Fails closed.
-- \`pipeline\` — prepare → simulate → submit → confirm: fresh snapshot
-  + live supply re-pin, route validation, the D3 fee plan + Charter
-  guard (at assembly AND submit), the atomic certify+salvage bundle
-  with the dynamically pinned precompile index, full-transaction
-  simulation with GraveYield error decoding, and a hard submission
-  gate (\`submit()\` throws unless mode = live).
+- \`pipeline\` — prepare → simulate → submit → confirm: claims-grade
+  snapshot production via the Rust \`grave-snapshotter-cli\` (the SOLE
+  production claims-snapshot producer — \`snapshotter\` module; there is
+  NO TypeScript fallback) + live supply re-pin, route validation, the D3
+  fee plan + Charter guard (at assembly AND submit), the atomic
+  certify+salvage bundle with the dynamically pinned precompile index,
+  full-transaction simulation with GraveYield error decoding, and a hard
+  submission gate (\`submit()\` throws unless mode = live).
 
 ## Test commands
 
@@ -59,8 +61,7 @@ pnpm --filter @graveyield/fleet-core typecheck
 pnpm --filter @graveyield/fleet-core test
 \`\`\`
 
-64 offline tests (node:test); no network, no keys.}
-}
-}
-}
-
+Offline tests (node:test); no network, no keys. Snapshotter subprocess
+tests run against a mock CLI executable; see
+\`docs/ops/CLAIMS-SNAPSHOT-PRODUCTION.md\` for the production wiring and
+the Rust binary build/packaging requirements.
