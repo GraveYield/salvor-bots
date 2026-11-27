@@ -34,6 +34,13 @@ if (mode === "hang") {
     setTimeout(() => process.exit(1), 10_000).unref();
   });
   setInterval(() => {}, 1000);
+} else if (mode === "leak") {
+  // Adversarial: echo the credential-bearing URL handed via --url to
+  // stderr, then exit nonzero — proves the runner redacts CLI stderr.
+  const url = argOf("--url") ?? "";
+  process.stderr.write(`connect failed: dial tcp: lookup ${url}: no such host\n`);
+  process.stderr.write(`retrying https://user: hunter2@example-internal.invalid/rpc?token=zzz\n`);
+  process.exit(3);
 } else if (mode === "exit") {
   process.stderr.write("mock: simulated snapshot build failure\n");
   process.exit(3);

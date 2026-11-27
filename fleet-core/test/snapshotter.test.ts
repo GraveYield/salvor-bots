@@ -764,6 +764,72 @@ describe("RustCliClaimsSnapshotter (subprocess boundary, mock CLI)", () => {
   });
 });
 
+describe("D3 review fixes — strict u64 validation and stderr redaction", () => {
+  function u64Probe(value: string): unknown {
+    // Minimal doc carrying one u64 field with the probed raw JSON literal.
+    const raw = `{"format_version":2,"snapshot_slot":${value}}`;
+    return parseClaimsArtifactJson(raw).snapshot_slot;
+  }
+
+  test("negative u64 values are refused (not arithmetic-dependent)", () => {
+    assert.throws(
+      () => verifyClaimsArtifact(Buffer.from('{"format_version":2,"snapshot_slot":-5}'), request()),
+      (e: ClaimsSnapshotterError) =>
+        e.category === "schema-invalid" && e.message.includes("snapshot_slot"),
+    );
+    assert.throws(
+      () => u64Probe("-5"),
+      (e: ClaimsSnapshotterError) => e.message.includes("non-negative"),
+    );
+  });
+
+  test("u64 overflow (> 2^64-1) is refused at the parse gate", () => {
+    assert.throws(
+      () => u64Probe("18446744073709551616"),
+      (e: ClaimsSnapshotterError) => e.message.includes("outside the u64 range"),
+    );
+    assert.throws(
+      () =>
+        verifyClaimsArtifact(
+          Buffer.from('{"format_version":2,"snapshot_slot":36893488147419103232}'),
+          request(),
+        ),
+      (e: ClaimsSnapshotterError) => e.category === "schema-invalid",
+    );
+  });
+
+  test("the u64 maximum is accepted exactly", () => {
+    assert.equal(u64Probe("18446744073709551615"), 18446744073709551615n);
+  });
+
+  test("a credential-bearing URL written to stderr by the CLI can never reach errors or events", async () => {
+    const secretUrl = "https://svc:sup3rs3cret@rpc-provider.example/v1?api-key=TOPSECRET&org=gy";
+    const fixture = writeValidFixture();
+    const snap = new RustCliClaimsSnapshotter({
+      executablePath: mockCliPath(),
+      rpcUrl: secretUrl,
+      commitment: "confirmed",
+      sinkLedgerPath: fixture.ledgerPath,
+      timeoutMs: 10_000,
+      env: { PATH: process.env["PATH"] ?? "", GY_MOCK_MODE: "leak" },
+    });
+    const err = await snap.produceSnapshot(request()).then(
+      () => null,
+      (e: unknown) => e as ClaimsSnapshotterError,
+    );
+    assert.ok(err);
+    assert.equal(err.category, "nonzero-exit");
+    const rendered = `${err.message} ${JSON.stringify(err.context)}`;
+    assert.ok(!rendered.includes("sup3rs3cret"), "error must not leak the URL credential");
+    assert.ok(!rendered.includes("TOPSECRET"), "error must not leak the query credential");
+    assert.ok(!rendered.includes("rpc-provider.example"), "error must not leak the endpoint host");
+    assert.ok(
+      rendered.includes("[redacted-rpc-url]") || rendered.includes("[redacted-credentials]"),
+      "redaction markers present",
+    );
+  });
+});
+
 describe("verifySinkLedgerBinding (pre-run governed input gate)", () => {
   test("binds schema, identity, and pool/amm/mint", () => {
     const ledger = buildSinkLedger({ pool: POOL, amm: AMM, lpMint: MINT });

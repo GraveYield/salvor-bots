@@ -176,3 +176,39 @@ will re-enter preparation as a NEW attempt when appropriate.
 * Fixture tests use a mock executable; they do **not** exercise the real
   Rust binary (no Rust toolchain in the test environment). Protocol-repo
   CI builds and tests the Rust crate itself.
+
+## Production composition point (review finding D3-3, recorded 2026-11-27)
+
+Where does a production deployment actually construct
+`RustCliClaimsSnapshotter` and inject it into `ExecutionPipeline`?
+
+**The composition point is external to this repository.** In this repo:
+
+* `ExecutionPipeline` requires a `ClaimsSnapshotter` at construction
+  (`PipelineOptions.snapshotter` — required, no default, no fallback).
+* The bots (`ConservativeSalvor` / `SniperSalvor` / `ExperimentalSalvor`)
+  RECEIVE a constructed pipeline as a constructor argument; none of them
+  builds one.
+* `snapshotterConfigFromEnv()` provides the standard operator wiring from
+  `GY_SNAPSHOTTER_*` variables, and `RustCliClaimsSnapshotter` validates
+  that configuration fail-closed.
+
+Evidence available: repository-wide inspection (2026-11-27, branch
+`d3-rust-claims-snapshotter`) shows no production binary or service in
+this repo that constructs `ExecutionPipeline` outside tests — the fleet
+is a library consumed by an external runtime/deployment. What therefore
+REMAINS UNVERIFIED here:
+
+* the external runtime's wiring of `snapshotterConfigFromEnv()` /
+  `new RustCliClaimsSnapshotter(...)` into `new ExecutionPipeline({...})`;
+* that the deployed `GY_SNAPSHOTTER_BIN` is the built CLI from the merged
+  protocol `main` and is on the salvage hosts;
+* that the governed per-pool ledger files are deployed at the configured
+  paths.
+
+No production integration is invented or claimed by this repository;
+the required wiring is documented above and in the
+`snapshotterConfigFromEnv` contract, and the library enforces the
+invariant regardless of the caller: a pipeline cannot be constructed
+without a claims snapshotter, and the claims snapshotter cannot be
+constructed without a full fail-closed configuration.

@@ -257,11 +257,16 @@ export interface ClaimsArtifactJson {
 }
 
 /**
- * u64 JSON fields that must be parsed EXACTLY (they can exceed Number's
- * safe-integer range). The reviver uses the JSON.parse source-text access
- * (Node ≥ 21 `context.source`) to build exact bigints; if a runtime
- * without source access supplies an unsafe magnitude the field is
- * REFUSED (fail-closed) rather than silently rounded.
+ * u64 JSON fields that must be parsed EXACTLY and RANGE-CHECKED (they can
+ * exceed Number's safe-integer range). The reviver uses the JSON.parse
+ * source-text access (Node ≥ 21 `context.source`) to build exact bigints
+ * and enforces the full u64 domain on EVERY serialized u64 field:
+ *   * negative values are refused (a plain JSON parse cannot produce a
+ *     negative u64 from valid input — a negative is tampering);
+ *   * values above 2^64 − 1 are refused (out of the u64 domain);
+ *   * on a runtime without source access, an unsafe magnitude is REFUSED
+ *     rather than silently rounded.
+ * Arithmetic consistency downstream is NEVER relied on for range safety.
  */
 const U64_ARTIFACT_KEYS = new Set([
   "snapshot_slot",
@@ -281,17 +286,26 @@ const U64_ARTIFACT_KEYS = new Set([
   "schema_version",
 ]);
 
+const U64_MAX = (1n << 64n) - 1n;
+
 function parseArtifactJson(text: string): ClaimsArtifactJson {
   const reviver = (key: string, value: unknown, context?: { source?: string }): unknown => {
     if (U64_ARTIFACT_KEYS.has(key) && typeof value === "number") {
       const source = context?.source;
       if (typeof source === "string" && /^\d+$/.test(source)) {
-        return BigInt(source);
+        const exact = BigInt(source);
+        if (exact > U64_MAX) {
+          throw new ClaimsSnapshotterError(
+            "schema-invalid",
+            `field "${key}" value ${source} is outside the u64 range (0 … 2^64-1)`,
+          );
+        }
+        return exact;
       }
-      if (!Number.isSafeInteger(value)) {
+      if (value < 0 || !Number.isSafeInteger(value)) {
         throw new ClaimsSnapshotterError(
           "schema-invalid",
-          `field "${key}" exceeded the exact-integer JSON parse capability of this runtime`,
+          `field "${key}" is not a non-negative in-range integer (negative, rounded, or beyond exact-integer parse capability)`,
         );
       }
       return BigInt(value);
@@ -357,6 +371,24 @@ function BS58_DECODE(s: string): Uint8Array {
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Redact credential-bearing material from CLI diagnostics before they can
+ * reach Fleet errors, events, or logs: the configured RPC URL is removed
+ * verbatim, and any URL that embeds userinfo credentials is masked. The
+ * CLI's own stderr is UNTRUSTED text — an adversarial or misconfigured
+ * CLI could echo the endpoint it was handed — so every string derived
+ * from it passes through here first.
+ */
+export function redactRpcSecrets(text: string, rpcUrl: string): string {
+  let out = text;
+  if (rpcUrl && rpcUrl.length > 0) {
+    out = out.split(rpcUrl).join("[redacted-rpc-url]");
+  }
+  // Defense in depth: `scheme://user:password@host...` → `scheme://[redacted]@host...`
+  out = out.replace(/(https?|ws|wss):\/\/[^\s/@]+:[^\s/@]+@/gi, "$1://[redacted-credentials]@");
+  return out;
 }
 
 function assertHex32(value: string, what: string): Uint8Array {
@@ -865,7 +897,7 @@ export class RustCliClaimsSnapshotter implements ClaimsSnapshotter {
       if (code !== 0) {
         throw new ClaimsSnapshotterError(
           signal ? "signal-terminated" : "nonzero-exit",
-          `grave-snapshotter-cli exited with ${signal ? `signal ${signal}` : `code ${code}`}${stderr ? `: ${stderr}` : ""}`,
+          `grave-snapshotter-cli exited with ${signal ? `signal ${signal}` : `code ${code}`}${stderr ? `: ${redactRpcSecrets(stderr, this.cfg.rpcUrl)}` : ""}`,
           { pool: req.pool.toBase58(), exitCode: code, signal },
         );
       }
