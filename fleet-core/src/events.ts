@@ -42,6 +42,7 @@ export type FailureClass =
   | "simulation-failed"
   | "route-failure"
   | "snapshot-incomplete"
+  | "snapshot-producer"
   | "submission-failed"
   | "unsupported"
   | "config-invalid"

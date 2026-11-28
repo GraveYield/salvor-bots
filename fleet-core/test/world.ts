@@ -71,6 +71,10 @@ export interface World {
   salvorLpAta: PublicKey;
   anchorPda: PublicKey;
   certPda: PublicKey;
+  /** The LP holders seeded into the world (Σ balances == lpSupply). */
+  holders: Array<{ owner: PublicKey; balance: bigint }>;
+  /** The LP supply the world's mint carries. */
+  lpSupply: bigint;
 }
 
 /** Build the world. Returns everything a test needs. */
@@ -243,6 +247,8 @@ export async function buildWorld(opts: WorldOptions): Promise<World> {
     salvorLpAta,
     anchorPda,
     certPda,
+    holders,
+    lpSupply: opts.lpSupply,
   };
 }
 

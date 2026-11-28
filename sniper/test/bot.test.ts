@@ -22,6 +22,7 @@ import {
 import { SniperSalvor, SNIPER_TUNABLES, byCertUrgency } from "../src/bot.js";
 import { VAULT_ID, FIXED_NOW_MS } from "../../fleet-core/test/helpers.js";
 import { buildWorld } from "../../fleet-core/test/world.js";
+import { stubSnapshotter } from "../../fleet-core/test/fixtures/stubSnapshotter.js";
 
 const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
@@ -71,6 +72,7 @@ async function makeBot(opts?: { mode?: "dry-run" | "simulation" | "live"; quoteA
     liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "test" } : null,
     routeAdapter: route,
     eventSink: sink,
+    snapshotter: stubSnapshotter(w),
     txSender: w.rpc.fakeSend.bind(w.rpc),
     now: NOW,
   });

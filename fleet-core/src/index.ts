@@ -14,6 +14,8 @@
 //   route             — RouteAdapter seam + Jupiter v6 adapter + fakes
 //   revalidate        — on-chain state revalidation (fail-closed)
 //   raydiumAccounts   — fork-proven 13-account CPI derivation
+//   snapshotter       — D3: Rust grave-snapshotter-cli claims producer
+//                       (sole production claims-snapshot source)
 //   pipeline          — prepare → simulate → submit → confirm
 
 export * from "./envelope.js";
@@ -25,5 +27,6 @@ export * from "./policy.js";
 export * from "./route.js";
 export * from "./revalidate.js";
 export * from "./raydiumAccounts.js";
+export * from "./snapshotter.js";
 export * from "./pipeline.js";
 export * from "./strategy.js";

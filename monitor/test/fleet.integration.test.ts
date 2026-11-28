@@ -42,6 +42,7 @@ import { SniperSalvor, SNIPER_TUNABLES } from "../../sniper/src/bot.js";
 import { ExperimentalSalvor, EXPERIMENTAL_TUNABLES } from "../../experimental/src/bot.js";
 import { VAULT_ID, FIXED_NOW_MS, encodeSalvageReceipt } from "../../fleet-core/test/helpers.js";
 import { buildWorld } from "../../fleet-core/test/world.js";
+import { stubSnapshotter } from "../../fleet-core/test/fixtures/stubSnapshotter.js";
 
 const NOW = () => FIXED_NOW_MS;
 const NOW_SEC = BigInt(Math.floor(FIXED_NOW_MS / 1000));
@@ -111,6 +112,7 @@ async function fleet(opts?: {
       liveEnablement: opts?.mode === "live" ? { enabled: true, acknowledgedBy: "ops" } : null,
       routeAdapter: route,
       eventSink: fleetSink,
+      snapshotter: stubSnapshotter(w),
       txSender: w.rpc.fakeSend.bind(w.rpc),
       now: NOW,
     });
@@ -385,6 +387,7 @@ describe("fleet integration — live settlement reconciliation", () => {
           throw new Error("must not be reached");
         }),
         eventSink: new MemoryEventSink(),
+        snapshotter: stubSnapshotter(f.w),
         txSender: f.w.rpc.fakeSend.bind(f.w.rpc),
         now: NOW,
       }),
